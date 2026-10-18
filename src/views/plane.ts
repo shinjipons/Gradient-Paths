@@ -92,18 +92,7 @@ export function makePlane(
   if (prev && prev.vLabel === "bend" ? dot(v, prev.v) < 0 : dot(v, axis) < -1e-6) v = scale(v, -1);
   const n = cross(safeU, v);
   const origin = scale(n, dot(n, A));
-  const pl: Plane = { origin, u: safeU, v, n, view: SQUARE, uLabel: "start → end", vLabel: "bend" };
-
-  // Frame the path (plus a margin) rather than the whole space.
-  let u0 = Infinity, u1 = -Infinity, v0 = Infinity, v1 = -Infinity;
-  for (const p of [A, B, ...path]) {
-    const [s, t] = project(pl, p);
-    u0 = Math.min(u0, s); u1 = Math.max(u1, s);
-    v0 = Math.min(v0, t); v1 = Math.max(v1, t);
-  }
-  const half = Math.max(0.9, (u1 - u0) / 2, (v1 - v0) / 2) * 1.25;
-  const cu = (u0 + u1) / 2;
-  const cv = (v0 + v1) / 2;
-  pl.view = [cu - half, cu + half, cv - half, cv + half];
-  return pl;
+  // Fixed bounds, centered on the space: the whole gamut fits (the RGB cube's
+  // corners sit at √3), so the view never refits as the path changes.
+  return { origin, u: safeU, v, n, view: [-1.8, 1.8, -1.8, 1.8], uLabel: "start → end", vLabel: "bend" };
 }

@@ -8,166 +8,188 @@
   </head>
   <body>
     <div class="app">
-      <aside class="panel">
-        <header class="brand">
-          <h1>Gradient Paths</h1>
-          <p>Pick two colors, a space, and a route between them.</p>
-        </header>
+      <header class="topbar">
+        <h1 class="brand" title="Pick two colors, a space, and a route between them.">Gradient Paths</h1>
 
-        <section>
-          <h2>Colors</h2>
-          <div class="endpoints">
-            <label class="swatch-field">
-              <span class="tag">A</span>
-              <input type="color" id="a-color" />
-              <input type="text" id="a-hex" spellcheck="false" maxlength="7" />
-            </label>
-            <button id="swap" class="icon-btn" title="Swap A and B" aria-label="Swap colors">⇅</button>
-            <label class="swatch-field">
-              <span class="tag">B</span>
-              <input type="color" id="b-color" />
-              <input type="text" id="b-hex" spellcheck="false" maxlength="7" />
-            </label>
-          </div>
-          <div class="presets" id="presets"></div>
-        </section>
+        <div class="group" role="group" aria-label="Colors">
+          <label class="swatch-field">
+            <span class="tag">A</span>
+            <input type="color" id="a-color" />
+            <input type="text" id="a-hex" spellcheck="false" maxlength="7" aria-label="Start color hex" />
+          </label>
+          <label class="swatch-field">
+            <span class="tag">B</span>
+            <input type="color" id="b-color" />
+            <input type="text" id="b-hex" spellcheck="false" maxlength="7" aria-label="End color hex" />
+          </label>
+        </div>
 
-        <section>
-          <h2>Color space</h2>
-          <div class="seg" id="space-seg"></div>
-          <p class="hint" id="space-blurb"></p>
-        </section>
+        <div class="group" role="group" aria-label="Color space">
+          <span class="group-label">Space</span>
+          <select id="space" aria-label="Color space"></select>
+        </div>
 
-        <section>
-          <h2>Path</h2>
+        <div class="group" role="group" aria-label="Path">
+          <span class="group-label">Path</span>
           <select id="mode"></select>
-          <p class="hint" id="mode-hint"></p>
-          <div class="field" id="hue-field">
-            <span>Hue direction</span>
-            <div class="seg small" id="hue-seg"></div>
-          </div>
-          <div id="arc-fields">
-            <label class="field">
-              <span>Bend <output id="bend-out"></output></span>
-              <input type="range" id="bend" min="-1" max="1" step="0.01" />
-            </label>
-            <label class="field">
-              <span>Roll <output id="roll-out"></output></span>
-              <input type="range" id="roll" min="-180" max="180" step="1" />
-            </label>
-          </div>
-          <div id="points-field">
-            <div class="points-head">
-              <span>Control points</span>
-              <button id="add-point" class="text-btn">+ Add</button>
+          <div class="pop">
+            <button class="pop-btn" aria-expanded="false" id="path-btn">Options</button>
+            <div class="pop-panel">
+              <p class="hint" id="space-blurb"></p>
+              <p class="hint" id="mode-hint"></p>
+              <div class="field" id="hue-field">
+                <span>Hue direction</span>
+                <div class="seg small" id="hue-seg"></div>
+              </div>
+              <div id="arc-fields">
+                <label class="field">
+                  <span>Bend <output id="bend-out"></output></span>
+                  <input type="range" id="bend" min="-1" max="1" step="0.01" />
+                </label>
+                <label class="field">
+                  <span>Roll <output id="roll-out"></output></span>
+                  <input type="range" id="roll" min="-180" max="180" step="1" />
+                </label>
+              </div>
+              <div id="points-field">
+                <div class="points-head">
+                  <span>Control points</span>
+                  <button id="add-point" class="text-btn">+ Add</button>
+                </div>
+                <ul id="points" class="points"></ul>
+                <p class="hint">Drag the numbered squares in the slice view. In waypoint modes, double-click the slice to add one.</p>
+              </div>
             </div>
-            <ul id="points" class="points"></ul>
-            <p class="hint">Drag the numbered squares in the slice view. In waypoint modes, double-click the slice to add one.</p>
           </div>
-        </section>
+        </div>
 
-        <section>
-          <h2>Sampling</h2>
-          <label class="field">
-            <span>Stops <output id="stops-out"></output></span>
-            <input type="range" id="stops" min="2" max="32" step="1" />
-          </label>
-          <div class="field">
-            <span>Spacing</span>
-            <div class="seg small" id="spacing-seg"></div>
+        <div class="group" role="group" aria-label="Sampling">
+          <div class="pop align-right">
+            <button class="pop-btn" aria-expanded="false" id="sampling-btn">Sampling</button>
+            <div class="pop-panel">
+              <label class="field">
+                <span>Stops <output id="stops-out"></output></span>
+                <input type="range" id="stops" min="2" max="32" step="1" />
+              </label>
+              <div class="field">
+                <span>Spacing</span>
+                <div class="seg small" id="spacing-seg"></div>
+              </div>
+              <label class="field">
+                <span>Easing</span>
+                <select id="easing">
+                  <option value="linear">Linear</option>
+                  <option value="ease-in">Ease in</option>
+                  <option value="ease-out">Ease out</option>
+                  <option value="ease-in-out">Ease in-out</option>
+                  <option value="smoother">Smootherstep</option>
+                </select>
+              </label>
+              <div class="field">
+                <span>Out-of-gamut colors</span>
+                <div class="seg small" id="gamut-seg"></div>
+              </div>
+            </div>
           </div>
-          <label class="field">
-            <span>Easing</span>
-            <select id="easing">
-              <option value="linear">Linear</option>
-              <option value="ease-in">Ease in</option>
-              <option value="ease-out">Ease out</option>
-              <option value="ease-in-out">Ease in-out</option>
-              <option value="smoother">Smootherstep</option>
-            </select>
-          </label>
-          <div class="field">
-            <span>Out-of-gamut colors</span>
-            <div class="seg small" id="gamut-seg"></div>
-          </div>
-        </section>
-      </aside>
+        </div>
+      </header>
 
       <main class="main">
-        <section class="card strips">
-          <div class="strip-row">
-            <span class="strip-label">This path</span>
-            <div class="strip-wrap"><canvas id="strip"></canvas></div>
-          </div>
-          <div class="strip-row">
-            <span class="strip-label" id="stops-label">Stops</span>
-            <div class="stops" id="stop-swatches"></div>
-          </div>
-          <div class="strip-row">
-            <span class="strip-label" id="native-label">Browser</span>
-            <div class="strip-wrap"><div class="native" id="native"></div></div>
-          </div>
-          <div class="stats" id="stats"></div>
-          <div class="css-out">
-            <code id="css"></code>
-            <button id="copy" class="text-btn">Copy CSS</button>
-          </div>
-        </section>
-
-        <section class="views">
-          <div class="card view">
-            <div class="view-head">
-              <h3>3D</h3>
-              <div class="toolbar">
-                <select id="solid" title="Gamut display">
-                  <option value="surface">Surface</option>
-                  <option value="points">Point cloud</option>
-                  <option value="wire">Wireframe</option>
-                  <option value="none">Hidden</option>
-                </select>
-                <input type="range" id="opacity" min="0.05" max="1" step="0.05" title="Surface opacity" />
-                <button id="proj" class="text-btn" title="Perspective / orthographic">Persp</button>
-                <button data-snap="top" class="text-btn">Top</button>
-                <button data-snap="front" class="text-btn">Front</button>
-                <button data-snap="right" class="text-btn">Right</button>
-                <button id="reset-cam" class="text-btn" title="Reset camera">⟲</button>
+        <div class="stage">
+          <section class="views">
+            <div class="card view">
+              <div class="view-head">
+                <h3>3D</h3>
+                <div class="toolbar">
+                  <select id="solid" title="Gamut display">
+                    <option value="surface">Surface</option>
+                    <option value="points">Point cloud</option>
+                    <option value="wire">Wireframe</option>
+                    <option value="none">Hidden</option>
+                  </select>
+                  <input type="range" id="opacity" min="0.05" max="1" step="0.05" title="Surface opacity" />
+                  <button id="proj" class="text-btn" title="Perspective / orthographic">Persp</button>
+                  <button data-snap="top" class="text-btn">Top</button>
+                  <button data-snap="front" class="text-btn">Front</button>
+                  <button data-snap="right" class="text-btn">Right</button>
+                  <button id="reset-cam" class="text-btn" title="Reset camera">⟲</button>
+                </div>
+              </div>
+              <div class="viewport" id="view3d">
+                <p class="viewport-hint">Right- or middle-drag to orbit · Shift to truck · Ctrl to dolly · wheel or pinch to zoom · <kbd>`</kbd> to fly</p>
               </div>
             </div>
-            <div class="viewport" id="view3d"></div>
-            <p class="foot">Right- or middle-drag to orbit · Shift to truck · Ctrl to dolly · wheel or pinch to zoom · <kbd>`</kbd> to fly</p>
-          </div>
-          <div class="card view">
-            <div class="view-head">
-              <h3>2D slice</h3>
-              <div class="toolbar">
-                <div class="seg small" id="plane-seg"></div>
+            <div class="card view">
+              <div class="view-head">
+                <h3>2D slice</h3>
+                <div class="toolbar">
+                  <div class="seg small" id="plane-seg"></div>
+                  <button id="reset-slice" class="text-btn" title="Reset pan and zoom">⟲</button>
+                </div>
+              </div>
+              <div class="plane-controls" id="plane-controls">
+                <label class="field inline" id="offset-field">
+                  <span>Position <output id="offset-out"></output></span>
+                  <input type="range" id="offset" min="-1" max="1" step="0.01" />
+                </label>
+                <label class="field inline" id="angle-field">
+                  <span>Angle <output id="angle-out"></output></span>
+                  <input type="range" id="angle" min="0" max="180" step="1" />
+                </label>
+                <button id="fit-plane" class="text-btn">Fit to path</button>
+              </div>
+              <div class="viewport" id="slice">
+                <p class="viewport-hint">Drag empty space, or right- or middle-drag, to pan · wheel or pinch to zoom</p>
               </div>
             </div>
-            <div class="viewport" id="slice"></div>
-            <div class="plane-controls" id="plane-controls">
-              <label class="field inline" id="offset-field">
-                <span>Position <output id="offset-out"></output></span>
-                <input type="range" id="offset" min="-1" max="1" step="0.01" />
-              </label>
-              <label class="field inline" id="angle-field">
-                <span>Angle <output id="angle-out"></output></span>
-                <input type="range" id="angle" min="0" max="180" step="1" />
-              </label>
-              <button id="fit-plane" class="text-btn">Fit to path</button>
-            </div>
-          </div>
-        </section>
+          </section>
 
-        <section class="charts">
-          <div class="card chart">
-            <h3>Channels along the gradient <small id="channels-sub"></small></h3>
-            <div class="chart-host" id="chart-channels"></div>
+          <!-- Floating widgets over the two viewports; each collapses to its header. -->
+          <div class="overlay">
+            <section class="card widget chart" data-widget="channels">
+              <button class="widget-head" aria-expanded="true">
+                <h3>Channels <small id="channels-sub"></small></h3><span class="chev" aria-hidden="true"></span>
+              </button>
+              <div class="widget-body">
+                <div class="chart-host" id="chart-channels"></div>
+              </div>
+            </section>
+
+            <section class="card widget strips" data-widget="gradient">
+              <button class="widget-head" aria-expanded="true">
+                <h3>Gradient</h3><span class="chev" aria-hidden="true"></span>
+              </button>
+              <div class="widget-body">
+                <div class="strip-row">
+                  <span class="strip-label">This path</span>
+                  <div class="strip-wrap"><canvas id="strip"></canvas></div>
+                </div>
+                <div class="strip-row">
+                  <span class="strip-label" id="stops-label">Stops</span>
+                  <div class="stops" id="stop-swatches"></div>
+                </div>
+                <div class="strip-row">
+                  <span class="strip-label" id="native-label">Browser</span>
+                  <div class="strip-wrap"><div class="native" id="native"></div></div>
+                </div>
+                <div class="stats" id="stats"></div>
+                <div class="css-out">
+                  <code id="css"></code>
+                  <button id="copy" class="text-btn">Copy CSS</button>
+                </div>
+              </div>
+            </section>
+
+            <section class="card widget chart" data-widget="speed">
+              <button class="widget-head" aria-expanded="true">
+                <h3>Perceptual speed <small>ΔE OK per 1% — flat means even</small></h3><span class="chev" aria-hidden="true"></span>
+              </button>
+              <div class="widget-body">
+                <div class="chart-host" id="chart-speed"></div>
+              </div>
+            </section>
           </div>
-          <div class="card chart">
-            <h3>Perceptual speed <small>ΔE OK per 1% of the gradient — flat means even</small></h3>
-            <div class="chart-host" id="chart-speed"></div>
-          </div>
-        </section>
+        </div>
       </main>
     </div>
     <script type="module" src="/src/main.ts"></script>

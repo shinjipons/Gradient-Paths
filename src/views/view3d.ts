@@ -15,6 +15,8 @@ import {
   MeshBasicMaterial,
   OctahedronGeometry,
   Points,
+  Raycaster,
+  Vector2,
   PointsMaterial,
   Scene,
   SphereGeometry,
@@ -23,8 +25,9 @@ import {
   TubeGeometry,
   Vector3,
   WebGLRenderer,
-  type Object3D,
+  Object3D,
 } from "three";
+import { TransformControls } from "three/addons/controls/TransformControls.js";
 import { clamp01, type Vec3 } from "../color/convert";
 import type { ColorSpace } from "../color/spaces";
 import type { Sample } from "../path/paths";
@@ -37,6 +40,7 @@ import { unproject, type Plane } from "./plane";
 
 /** Embed space is ~[-1,1]³; this is its size in world units. */
 const S = 2.2;
+const HOME_DIR = new Vector3(6.5, -7.5, 4.5).normalize();
 const v3 = (p: Vec3) => new Vector3(p[0] * S, p[1] * S, p[2] * S);
 
 interface PathInput {
@@ -51,6 +55,21 @@ interface PathInput {
   plane: Plane;
 }
 
+export interface View3DCallbacks {
+  onDragStart(): void;
+  onDragEnd(): void;
+  /** An endpoint was moved with the gizmo; `rgb` is already clamped to sRGB. */
+  onEndpoint(which: "a" | "b", rgb: Vec3): void;
+  /** A control point / waypoint was moved with the gizmo (embed coords, unclamped). */
+  onPoint(index: number, embed: Vec3): void;
+}
+
+/** A press that moves less than this is a click (select), not a drag. */
+const CLICK_SLOP_PX = 4;
+/** Single-axis drags snap to another handle's coordinate within this many px. */
+const SNAP_PX = 10;
+const AXIS_INDEX: Record<string, 0 | 1 | 2> = { X: 0, Y: 1, Z: 2 };
+
 /**
  * 3D view of the sRGB gamut as it sits in the current space, with the path
  * running through it. Camera navigation is the house scheme (middle/right
@@ -59,6 +78,11 @@ interface PathInput {
 export class View3D {
   private renderer: WebGLRenderer;
   private scene = new Scene();
+  /**
+   * Drawn after the scene with a fresh depth buffer: the path, its handles and
+   * the gizmo always show on top of the gamut, yet still occlude themselves.
+   */
+  private overlay = new Scene();
   private rig: CameraRig;
   private controls: ViewControls;
   private nav: Navigation;
@@ -69,9 +93,30 @@ export class View3D {
   private solidObjects: Object3D[] = [];
   private gamutKey = "";
   private last = performance.now();
+  private space: ColorSpace | null = null;
 
-  constructor(private container: HTMLElement) {
+  // Handle selection (A, B, control points) + translate gizmo. The gizmo drives a persistent proxy
+  // object, since the path meshes are rebuilt on every update.
+  private gizmo: TransformControls;
+  private proxy = new Object3D();
+  /** Selected handle: "a", "b", or "p<i>" for control point i. */
+  private selected: string | null = null;
+  private handleMeshes: Mesh[] = [];
+  private handles = new Map<string, Vec3>();
+  private raycaster = new Raycaster();
+  private press: { x: number; y: number } | null = null;
+  /** Dashed guide to the handle snapped to, shown while an axis drag is snapped. */
+  private snapGuide = new Line(
+    new BufferGeometry().setFromPoints([new Vector3(), new Vector3()]),
+    new LineDashedMaterial({ color: 0xffffff, dashSize: 0.08, gapSize: 0.06, depthTest: false, transparent: true }),
+  );
+
+  constructor(
+    private container: HTMLElement,
+    private cb: View3DCallbacks,
+  ) {
     this.renderer = new WebGLRenderer({ antialias: true, alpha: true });
+    this.renderer.autoClear = false;
     this.renderer.setPixelRatio(window.devicePixelRatio);
     container.appendChild(this.renderer.domElement);
     const canvas = this.renderer.domElement;
@@ -79,8 +124,6 @@ export class View3D {
     canvas.tabIndex = 0;
 
     this.rig = new CameraRig(1);
-    this.rig.persp.position.set(6.5, -7.5, 4.5);
-    this.rig.persp.lookAt(0, 0, 0);
     this.controls = new ViewControls(this.rig, canvas);
     this.nav = new Navigation(canvas, this.rig, this.controls, {
       solidObjects: this.solidObjects,
@@ -90,13 +133,50 @@ export class View3D {
       onActiveChange: (active) => {
         this.nav.enabled = !active;
         this.controls.enabled = !active;
+        this.gizmo.enabled = !active;
       },
       onProjectionChange: () => this.controls.onCameraToggled(),
     });
 
-    this.scene.add(this.gamut, this.pathGroup, this.planeGroup);
+    this.gizmo = new TransformControls(this.rig.camera, canvas);
+    this.gizmo.setMode("translate");
+    this.gizmo.setSize(0.6);
+    this.snapGuide.visible = false;
+    this.snapGuide.renderOrder = 11;
+    this.snapGuide.frustumCulled = false; // its geometry changes every drag
+    this.gizmo.addEventListener("dragging-changed", (e) => {
+      if (e.value) this.cb.onDragStart();
+      else {
+        this.snapGuide.visible = false;
+        this.cb.onDragEnd();
+        // Snap back onto where the handle ended up (endpoints are clamped to sRGB).
+        this.followSelected();
+      }
+    });
+    this.gizmo.addEventListener("objectChange", () => {
+      if (!this.selected || !this.space) return;
+      this.snapToOther();
+      const p = this.proxy.position;
+      const e: Vec3 = [p.x / S, p.y / S, p.z / S];
+      if (this.selected.startsWith("p")) {
+        this.cb.onPoint(Number(this.selected.slice(1)), e);
+        return;
+      }
+      const rgb = this.space.toRGB(this.space.unembed(e));
+      if (rgb.every(Number.isFinite)) this.cb.onEndpoint(this.selected as "a" | "b", rgb.map(clamp01) as Vec3);
+    });
+    canvas.addEventListener("pointerdown", this.onPointerDown);
+    canvas.addEventListener("pointerup", this.onPointerUp);
+    canvas.addEventListener("pointermove", this.onHover);
+    window.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && this.selected && !this.fly.active) this.select(null);
+    });
+
+    this.scene.add(this.gamut, this.planeGroup);
+    this.overlay.add(this.pathGroup, this.proxy, this.gizmo.getHelper(), this.snapGuide);
     new ResizeObserver(() => this.resize()).observe(container);
     this.resize();
+    this.home();
     this.renderer.setAnimationLoop(this.frame);
   }
 
@@ -107,6 +187,24 @@ export class View3D {
     this.renderer.domElement.style.width = `${r.width}px`;
     this.renderer.domElement.style.height = `${r.height}px`;
     this.rig.setAspect(r.width / r.height);
+    // Until the user moves the camera, keep the whole gamut framed.
+    if (this.homePos && this.rig.projection === "persp" && this.rig.persp.position.distanceTo(this.homePos) < 1e-6) {
+      this.home();
+    }
+  }
+
+  private homePos: Vector3 | null = null;
+
+  /** Default three-quarter view, far enough back to fit the gamut at this aspect. */
+  private home() {
+    const cam = this.rig.persp;
+    const half = (cam.fov * Math.PI) / 360;
+    const hHalf = Math.atan(Math.tan(half) * cam.aspect);
+    const radius = S * 1.55;
+    const d = radius / Math.sin(Math.min(half, hHalf));
+    cam.position.copy(HOME_DIR).multiplyScalar(d);
+    cam.lookAt(0, 0, 0);
+    this.homePos = cam.position.clone();
   }
 
   private frame = () => {
@@ -115,8 +213,107 @@ export class View3D {
     this.last = now;
     if (this.fly.active) this.fly.update(dt);
     else this.controls.update();
-    // Keep labels and markers facing the camera.
+    // The rig swaps cameras on projection toggles and snaps.
+    if (this.gizmo.camera !== this.rig.camera) this.gizmo.camera = this.rig.camera;
+    this.sizeLabels();
+    this.renderer.clear();
     this.renderer.render(this.scene, this.rig.camera);
+    this.renderer.clearDepth();
+    this.renderer.render(this.overlay, this.rig.camera);
+  };
+
+  private readonly labelPos = new Vector3();
+
+  /** Scale every label so its text keeps a fixed pixel height on screen. */
+  private sizeLabels() {
+    const cssH = this.renderer.domElement.clientHeight || 1;
+    const fit = (o: Object3D) => {
+      const px = o.userData.labelPx as number | undefined;
+      if (px === undefined) return;
+      const h = px * this.rig.worldPerPixel(o.getWorldPosition(this.labelPos), cssH);
+      o.scale.set(h * o.userData.labelAspect, h, 1);
+    };
+    this.scene.traverse(fit);
+    this.overlay.traverse(fit);
+  }
+
+  // --- handle selection (A, B, control points) -------------------------------
+
+  private select(id: string | null) {
+    this.selected = id && this.handles.has(id) ? id : null;
+    if (this.selected) {
+      this.followSelected();
+      this.gizmo.attach(this.proxy);
+    } else this.gizmo.detach();
+  }
+
+  /** Put the gizmo on the selected handle, or drop it if the handle is gone. */
+  private followSelected() {
+    if (!this.selected) return;
+    const p = this.handles.get(this.selected);
+    if (p) this.proxy.position.copy(v3(p));
+    else this.select(null);
+  }
+
+  /**
+   * On a single-axis drag, lock that coordinate to the nearest other handle's
+   * (A, B or another control point) when it comes within SNAP_PX on screen,
+   * and draw a guide between the two.
+   */
+  private snapToOther() {
+    const i = AXIS_INDEX[this.gizmo.axis ?? ""];
+    const p = this.proxy.position;
+    this.snapGuide.visible = false;
+    if (i === undefined || !this.selected) return;
+    const cssH = this.renderer.domElement.clientHeight || 1;
+    const tol = SNAP_PX * this.rig.worldPerPixel(p, cssH);
+    let other: Vector3 | null = null;
+    let best = tol;
+    for (const [id, h] of this.handles) {
+      if (id === this.selected) continue;
+      const q = v3(h);
+      const d = Math.abs(p.getComponent(i) - q.getComponent(i));
+      if (d <= best) {
+        best = d;
+        other = q;
+      }
+    }
+    if (!other) return;
+    p.setComponent(i, other.getComponent(i));
+    const g = this.snapGuide.geometry;
+    g.setFromPoints([p.clone(), other]);
+    this.snapGuide.computeLineDistances();
+    this.snapGuide.visible = true;
+  }
+
+  private pickHandle(e: PointerEvent): string | null {
+    const r = this.renderer.domElement.getBoundingClientRect();
+    const ndc = new Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+    this.raycaster.setFromCamera(ndc, this.rig.camera);
+    const hit = this.raycaster.intersectObjects(this.handleMeshes, false)[0];
+    return (hit?.object.userData.handle as string | undefined) ?? null;
+  }
+
+  // Left button only: it never navigates, so it is free for picking.
+  private onPointerDown = (e: PointerEvent) => {
+    // TransformControls listens first, so `axis` already says whether this
+    // press landed on one of its handles; such a press belongs to the gizmo.
+    const onGizmo = this.gizmo.axis !== null;
+    this.press = e.button === 0 && !this.fly.active && !onGizmo ? { x: e.clientX, y: e.clientY } : null;
+  };
+
+  private onPointerUp = (e: PointerEvent) => {
+    const p = this.press;
+    this.press = null;
+    if (!p || e.button !== 0 || this.gizmo.dragging) return;
+    if (Math.hypot(e.clientX - p.x, e.clientY - p.y) > CLICK_SLOP_PX) return;
+    this.select(this.pickHandle(e));
+  };
+
+  private onHover = (e: PointerEvent) => {
+    if (e.buttons !== 0 || this.fly.active) return;
+    const over = !this.gizmo.axis && this.pickHandle(e) !== null;
+    this.renderer.domElement.style.cursor = over ? "pointer" : "";
   };
 
   // --- toolbar actions ---------------------------------------------------------
@@ -137,8 +334,7 @@ export class View3D {
     this.controls.target.set(0, 0, 0);
     this.rig.persp.up.set(0, 0, 1);
     this.rig.ortho.up.set(0, 0, 1);
-    this.rig.persp.position.set(6.5, -7.5, 4.5);
-    this.rig.persp.lookAt(0, 0, 0);
+    this.home();
     this.controls.onCameraToggled();
   }
 
@@ -149,6 +345,7 @@ export class View3D {
   // --- gamut solid -----------------------------------------------------------
 
   setGamut(space: ColorSpace, style: SolidStyle, opacity: number) {
+    this.space = space;
     const key = `${space.id}|${style}|${opacity}`;
     if (key === this.gamutKey) return;
     this.gamutKey = key;
@@ -191,6 +388,11 @@ export class View3D {
 
   setPath(inp: PathInput) {
     disposeChildren(this.pathGroup);
+    this.handleMeshes = [];
+    this.handles = new Map<string, Vec3>([["a", inp.A], ["b", inp.B]]);
+    inp.points.forEach((p, i) => this.handles.set(`p${i}`, p));
+    // Follow the handle when it changes elsewhere; during a drag the gizmo owns it.
+    if (!this.gizmo.dragging) this.followSelected();
     const pts = inp.dense.map((d) => v3(d.embed));
     // Collapse duplicates so the tube's Frenet frames stay finite.
     const uniq = pts.filter((p, i) => i === 0 || p.distanceTo(pts[i - 1]) > 1e-5);
@@ -220,19 +422,27 @@ export class View3D {
       );
     }
 
+    // Stops get the same dark outline as the tube, so the line stays legible
+    // where it runs over gamut colors identical to its own.
     const stopGeo = new SphereGeometry(0.07, 16, 12);
+    const stopCasingGeo = new SphereGeometry(0.09, 16, 12);
+    const casingMat = new MeshBasicMaterial({ color: 0x000000, side: 1 /* BackSide */ });
     for (const st of inp.stops) {
       const m = new Mesh(stopGeo, new MeshBasicMaterial({ color: new Color().setStyle(st.hex, "srgb") }));
       m.position.copy(v3(st.embed));
-      this.pathGroup.add(m);
+      const casing = new Mesh(stopCasingGeo, casingMat);
+      casing.position.copy(m.position);
+      this.pathGroup.add(casing, m);
     }
     const endGeo = new SphereGeometry(0.13, 24, 16);
-    for (const [p, col, txt] of [
-      [inp.A, inp.aColor, "A"],
-      [inp.B, inp.bColor, "B"],
+    for (const [p, col, txt, key] of [
+      [inp.A, inp.aColor, "A", "a"],
+      [inp.B, inp.bColor, "B", "b"],
     ] as const) {
       const m = new Mesh(endGeo, new MeshBasicMaterial({ color: new Color().setStyle(col, "srgb") }));
       m.position.copy(v3(p));
+      m.userData.handle = key;
+      this.handleMeshes.push(m);
       this.pathGroup.add(m);
       const ring = new Mesh(
         new SphereGeometry(0.16, 24, 16),
@@ -240,7 +450,7 @@ export class View3D {
       );
       ring.position.copy(m.position);
       this.pathGroup.add(ring);
-      const l = label(txt, m.position.clone().add(new Vector3(0, 0, 0.32)));
+      const l = label(txt, m.position.clone().add(new Vector3(0, 0, 0.17)), 13, true);
       this.pathGroup.add(l);
     }
 
@@ -249,8 +459,10 @@ export class View3D {
       inp.points.forEach((p, i) => {
         const m = new Mesh(og, new MeshBasicMaterial({ color: 0xffffff }));
         m.position.copy(v3(p));
+        m.userData.handle = `p${i}`;
+        this.handleMeshes.push(m);
         this.pathGroup.add(m);
-        this.pathGroup.add(label(String(i + 1), m.position.clone().add(new Vector3(0, 0, 0.25)), 0.35));
+        this.pathGroup.add(label(String(i + 1), m.position.clone().add(new Vector3(0, 0, 0.11)), 11, true));
       });
       if (inp.showPolygon) {
         const g = new BufferGeometry().setFromPoints([inp.A, ...inp.points, inp.B].map(v3));
@@ -371,15 +583,21 @@ function ringAt(space: ColorSpace): Line {
   );
 }
 
-function label(text: string, pos: Vector3, size = 0.45): Sprite {
+/**
+ * A text label that stays the same size on screen however far the camera is:
+ * `px` is the text height in CSS pixels; View3D rescales it every frame.
+ * `anchorBottom` hangs the label above its point instead of centering on it.
+ */
+function label(text: string, pos: Vector3, px = 12, anchorBottom = false): Sprite {
   const cv = document.createElement("canvas");
   const ctx = cv.getContext("2d")!;
   const fs = 48;
-  ctx.font = `600 ${fs}px ui-sans-serif, system-ui, sans-serif`;
+  const font = `600 ${fs}px ui-sans-serif, system-ui, sans-serif`;
+  ctx.font = font;
   const w = Math.ceil(ctx.measureText(text).width) + 24;
   cv.width = w;
   cv.height = fs + 20;
-  ctx.font = `600 ${fs}px ui-sans-serif, system-ui, sans-serif`;
+  ctx.font = font;
   ctx.textBaseline = "middle";
   ctx.lineWidth = 8;
   ctx.strokeStyle = "rgba(0,0,0,0.85)";
@@ -388,7 +606,9 @@ function label(text: string, pos: Vector3, size = 0.45): Sprite {
   ctx.fillText(text, 12, cv.height / 2);
   const tex = new CanvasTexture(cv);
   const sp = new Sprite(new SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
-  sp.scale.set((size * cv.width) / cv.height, size, 1);
+  sp.userData.labelPx = (px * cv.height) / fs;
+  sp.userData.labelAspect = cv.width / cv.height;
+  if (anchorBottom) sp.center.set(0.5, 0);
   sp.position.copy(pos);
   sp.renderOrder = 10;
   return sp;

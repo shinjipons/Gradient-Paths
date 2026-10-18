@@ -27,7 +27,12 @@ interface DrawInput {
   stops: Sample[];
 }
 
-const RES = 240;
+/** Background raster: at most this many columns, at least 2 screen px each. */
+const MAX_COLS = 360;
+const MIN_ZOOM = 0.5;
+const MAX_ZOOM = 40;
+/** Wheel deltas this big (pixel mode) are mouse notches, not trackpad scrolls. */
+const WHEEL_NOTCH_MIN = 40;
 
 /**
  * 2D slice through the current space. The background is the slice itself
@@ -41,7 +46,12 @@ export class SliceView {
   private bgKey = "";
   private input: DrawInput | null = null;
   private drag: { handle: Handle; start: Vec3; sx: number; sy: number } | null = null;
+  private pan: { x: number; y: number } | null = null;
   private hover: Handle | null = null;
+  /** View transform over the fitted layout: screen = fitted * zoom + offset. */
+  private zoom = 1;
+  private tx = 0;
+  private ty = 0;
 
   constructor(
     private container: HTMLElement,
@@ -51,13 +61,47 @@ export class SliceView {
     this.canvas.className = "slice-canvas";
     container.appendChild(this.canvas);
     this.ctx = this.canvas.getContext("2d")!;
-    this.bg.width = this.bg.height = RES;
-    new ResizeObserver(() => this.draw()).observe(container);
+    new ResizeObserver(() => {
+      this.sizeCache = null;
+      this.draw();
+    }).observe(container);
     this.canvas.addEventListener("pointerdown", this.onDown);
     this.canvas.addEventListener("pointermove", this.onMove);
     this.canvas.addEventListener("pointerup", this.onUp);
     this.canvas.addEventListener("pointercancel", this.onUp);
     this.canvas.addEventListener("dblclick", this.onDbl);
+    this.canvas.addEventListener("wheel", this.onWheel, { passive: false });
+    // Middle press opens autoscroll in Chrome; right press opens the menu.
+    this.canvas.addEventListener("mousedown", (e) => e.button === 1 && e.preventDefault());
+    this.canvas.addEventListener("contextmenu", (e) => e.preventDefault());
+  }
+
+  /** Back to the fitted view. */
+  resetView() {
+    this.zoom = 1;
+    this.tx = this.ty = 0;
+    this.draw();
+  }
+
+  private zoomAt(x: number, y: number, factor: number) {
+    const k = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, this.zoom * factor));
+    const f = k / this.zoom;
+    // Keep the point under the cursor fixed.
+    this.tx = x - (x - this.tx) * f;
+    this.ty = y - (y - this.ty) * f;
+    this.zoom = k;
+    this.draw();
+  }
+
+  /** Pixels at the top and bottom covered by floating UI; the plot centers between them. */
+  private insetTop = 0;
+  private insetBottom = 0;
+  setInsets(top: number, bottom: number) {
+    if (Math.abs(top - this.insetTop) < 1 && Math.abs(bottom - this.insetBottom) < 1) return;
+    this.insetTop = top;
+    this.insetBottom = bottom;
+    this.sizeCache = null;
+    this.draw();
   }
 
   get dragging() {
@@ -71,40 +115,73 @@ export class SliceView {
 
   // --- coordinates -----------------------------------------------------------
 
+  private sizeCache: { w: number; h: number; s: number; ox: number; oy: number } | null = null;
+
+  /** Fitted plot layout; cached because every coordinate conversion needs it. */
   private size() {
+    return (this.sizeCache ??= this.measure());
+  }
+
+  private measure() {
     const r = this.container.getBoundingClientRect();
-    const s = Math.max(120, Math.min(r.width, r.height));
-    return { w: r.width, h: r.height, s, ox: (r.width - s) / 2, oy: (r.height - s) / 2 };
+    // Use the uncovered area, unless that would leave the plot too small.
+    let top = this.insetTop;
+    let visH = r.height - this.insetTop - this.insetBottom;
+    if (visH < 200) {
+      top = 0;
+      visH = r.height;
+    }
+    const s = Math.max(120, Math.min(r.width, visH) - 16);
+    return { w: r.width, h: r.height, s, ox: (r.width - s) / 2, oy: top + (visH - s) / 2 };
   }
 
   private toPx(pl: Plane, uv: [number, number]): [number, number] {
     const { s, ox, oy } = this.size();
     const [u0, u1, v0, v1] = pl.view;
-    return [ox + ((uv[0] - u0) / (u1 - u0)) * s, oy + (1 - (uv[1] - v0) / (v1 - v0)) * s];
+    const fx = ox + ((uv[0] - u0) / (u1 - u0)) * s;
+    const fy = oy + (1 - (uv[1] - v0) / (v1 - v0)) * s;
+    return [fx * this.zoom + this.tx, fy * this.zoom + this.ty];
   }
 
   private toPlane(pl: Plane, x: number, y: number): [number, number] {
     const { s, ox, oy } = this.size();
     const [u0, u1, v0, v1] = pl.view;
-    return [u0 + ((x - ox) / s) * (u1 - u0), v0 + (1 - (y - oy) / s) * (v1 - v0)];
+    const fx = (x - this.tx) / this.zoom;
+    const fy = (y - this.ty) / this.zoom;
+    return [u0 + ((fx - ox) / s) * (u1 - u0), v0 + (1 - (fy - oy) / s) * (v1 - v0)];
   }
 
   // --- background ------------------------------------------------------------
 
-  private renderBackground(space: ColorSpace, pl: Plane) {
-    const key = JSON.stringify([space.id, pl.origin, pl.u, pl.v, pl.view].flat(2).map((x) => (typeof x === "number" ? x.toFixed(4) : x)));
+  /** Rasterize the slice under the whole canvas, at the current pan and zoom. */
+  private renderBackground(space: ColorSpace, pl: Plane, w: number, h: number) {
+    const cols = Math.max(2, Math.min(MAX_COLS, Math.ceil(w / 2)));
+    const rows = Math.max(2, Math.round((cols * h) / w));
+    const { s: fs, ox, oy } = this.size();
+    const key = JSON.stringify(
+      [space.id, pl.origin, pl.u, pl.v, pl.view, cols, rows, this.zoom, this.tx, this.ty, fs, ox, oy]
+        .flat(2)
+        .map((x) => (typeof x === "number" ? x.toFixed(4) : x)),
+    );
     if (key === this.bgKey) return;
     this.bgKey = key;
+    this.bg.width = cols;
+    this.bg.height = rows;
     const g = this.bg.getContext("2d")!;
-    const img = g.createImageData(RES, RES);
-    const [u0, u1, v0, v1] = pl.view;
-    for (let j = 0; j < RES; j++) {
-      for (let i = 0; i < RES; i++) {
-        const s = u0 + ((i + 0.5) / RES) * (u1 - u0);
-        const t = v1 - ((j + 0.5) / RES) * (v1 - v0);
+    const img = g.createImageData(cols, rows);
+    // Screen → plane is affine, so step it instead of converting every pixel.
+    const [s0, t0] = this.toPlane(pl, 0, 0);
+    const [sx, tx] = this.toPlane(pl, 1, 0);
+    const [sy, ty] = this.toPlane(pl, 0, 1);
+    for (let j = 0; j < rows; j++) {
+      for (let i = 0; i < cols; i++) {
+        const x = ((i + 0.5) / cols) * w;
+        const y = ((j + 0.5) / rows) * h;
+        const s = s0 + (sx - s0) * x + (sy - s0) * y;
+        const t = t0 + (tx - t0) * x + (ty - t0) * y;
         const native = space.unembed(unproject(pl, s, t));
         const rgb = space.toRGB(native);
-        const k = (j * RES + i) * 4;
+        const k = (j * cols + i) * 4;
         if (rgb.every(Number.isFinite) && isRealColor(space, native, rgb)) {
           img.data[k] = clamp01(rgb[0]) * 255;
           img.data[k + 1] = clamp01(rgb[1]) * 255;
@@ -134,7 +211,7 @@ export class SliceView {
   draw() {
     const inp = this.input;
     if (!inp) return;
-    const { w, h, s, ox, oy } = this.size();
+    const { w, h } = this.size();
     const dpr = window.devicePixelRatio || 1;
     if (this.canvas.width !== Math.round(w * dpr) || this.canvas.height !== Math.round(h * dpr)) {
       this.canvas.width = Math.round(w * dpr);
@@ -145,11 +222,9 @@ export class SliceView {
     ctx.clearRect(0, 0, w, h);
     const pl = inp.plane;
 
-    this.renderBackground(inp.space, pl);
+    this.renderBackground(inp.space, pl, w, h);
     ctx.imageSmoothingEnabled = true;
-    ctx.drawImage(this.bg, ox, oy, s, s);
-    ctx.strokeStyle = "rgba(255,255,255,0.12)";
-    ctx.strokeRect(ox + 0.5, oy + 0.5, s - 1, s - 1);
+    ctx.drawImage(this.bg, 0, 0, w, h);
 
     // Neutral axis, projected.
     const [n0, n1] = inp.space.neutral;
@@ -251,9 +326,12 @@ export class SliceView {
     ctx.font = "11px ui-sans-serif, system-ui";
     ctx.textAlign = "right";
     ctx.textBaseline = "bottom";
-    if (pl.uLabel) ctx.fillText(`${pl.uLabel} →`, ox + s - 6, oy + s - 6);
+    // Pinned to the uncovered area, not the plot, so they stay put while panning.
+    const top = this.insetTop;
+    const bottom = h - this.insetBottom;
+    if (pl.uLabel) ctx.fillText(`${pl.uLabel} →`, w - 12, bottom - 6);
     ctx.save();
-    ctx.translate(ox + 14, oy + 8);
+    ctx.translate(14, top + 12);
     ctx.rotate(-Math.PI / 2);
     ctx.textAlign = "right";
     ctx.textBaseline = "top";
@@ -285,9 +363,17 @@ export class SliceView {
   }
 
   private onDown = (e: PointerEvent) => {
-    if (e.button !== 0 || !this.input) return;
+    if (!this.input) return;
     const [x, y] = this.local(e);
-    const h = this.pick(x, y);
+    const h = e.button === 0 ? this.pick(x, y) : null;
+    // Middle or right drag pans anywhere; left drag pans on empty canvas.
+    if (!h && (e.button === 0 || e.button === 1 || e.button === 2)) {
+      e.preventDefault();
+      this.pan = { x, y };
+      this.canvas.setPointerCapture(e.pointerId);
+      this.canvas.style.cursor = "grabbing";
+      return;
+    }
     if (!h) return;
     const start =
       h.kind === "point" ? this.input.points[h.index] : h.kind === "a" ? this.input.A : this.input.B;
@@ -299,6 +385,13 @@ export class SliceView {
   private onMove = (e: PointerEvent) => {
     if (!this.input) return;
     const [x, y] = this.local(e);
+    if (this.pan) {
+      this.tx += x - this.pan.x;
+      this.ty += y - this.pan.y;
+      this.pan = { x, y };
+      this.draw();
+      return;
+    }
     if (!this.drag) {
       const h = this.pick(x, y);
       if (JSON.stringify(h) !== JSON.stringify(this.hover)) {
@@ -327,9 +420,34 @@ export class SliceView {
   };
 
   private onUp = () => {
+    if (this.pan) {
+      this.pan = null;
+      this.canvas.style.cursor = "default";
+      return;
+    }
     if (!this.drag) return;
     this.drag = null;
     this.cb.onDragEnd();
+  };
+
+  /**
+   * Pinch (reported with ctrlKey) and mouse-wheel notches zoom about the
+   * cursor; two-finger trackpad scrolling pans.
+   */
+  private onWheel = (e: WheelEvent) => {
+    e.preventDefault();
+    const [x, y] = this.local(e);
+    const LINE = 100 / 3;
+    const unit = e.deltaMode === 1 ? LINE : e.deltaMode === 2 ? 800 : 1;
+    const dx = e.deltaX * unit;
+    const dy = e.deltaY * unit;
+    if (e.ctrlKey) this.zoomAt(x, y, Math.exp(-dy * 0.01));
+    else if (e.deltaMode !== 0 || (dx === 0 && Math.abs(dy) >= WHEEL_NOTCH_MIN)) this.zoomAt(x, y, Math.exp(-dy * 0.0015));
+    else {
+      this.tx -= dx;
+      this.ty -= dy;
+      this.draw();
+    }
   };
 
   private onDbl = (e: MouseEvent) => {

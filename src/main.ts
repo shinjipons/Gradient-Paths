@@ -27,34 +27,14 @@ const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getEleme
 
 const state = deserialize(location.hash);
 let space = spaceById(state.space);
-/** The slice plane is held still while a handle is dragged on it. */
-let frozenPlane: Plane | null = null;
+/**
+ * The slice plane is locked once a handle is dragged on it, and stays locked
+ * after the drag, so editing in 2D never re-orients the view. Any change made
+ * elsewhere (pickers, space, path settings) unlocks it.
+ */
+let lockedPlane: Plane | null = null;
 
 // --- static UI ---------------------------------------------------------------
-
-const PRESETS: [string, string][] = [
-  ["#0000ff", "#ffff00"],
-  ["#ff0000", "#00ffff"],
-  ["#ff00ff", "#00ff00"],
-  ["#000000", "#ffffff"],
-  ["#ff6a00", "#0066ff"],
-  ["#2f0f5d", "#ffd166"],
-  ["#00a6a6", "#f72585"],
-];
-$("presets").append(
-  ...PRESETS.map(([a, b]) => {
-    const btn = document.createElement("button");
-    btn.className = "preset";
-    btn.title = `${a} → ${b}`;
-    btn.style.background = `linear-gradient(90deg, ${a}, ${b})`;
-    btn.onclick = () => {
-      state.a = hexToRgb(a)!;
-      state.b = hexToRgb(b)!;
-      render();
-    };
-    return btn;
-  }),
-);
 
 function seg<T extends string>(host: HTMLElement, opts: { v: T; label: string; title?: string }[], onPick: (v: T) => void) {
   host.innerHTML = "";
@@ -74,13 +54,23 @@ function segSet(host: HTMLElement, v: string, disabled = false) {
   });
 }
 
-seg($("space-seg"), SPACES.map((s) => ({ v: s.id, label: s.label })), (id) => {
-  const next = spaceById(id);
+// Grouped by family; the current space's blurb shows in Options and the tooltip.
+const spaceSel = $<HTMLSelectElement>("space");
+spaceSel.innerHTML = [...new Set(SPACES.map((s) => s.family))]
+  .map(
+    (fam) =>
+      `<optgroup label="${fam}">${SPACES.filter((s) => s.family === fam)
+        .map((s) => `<option value="${s.id}">${s.label}</option>`)
+        .join("")}</optgroup>`,
+  )
+  .join("");
+spaceSel.onchange = () => {
+  const next = spaceById(spaceSel.value);
   state.points = convertPoints(state.points, space, next);
   space = next;
-  state.space = id;
+  state.space = next.id;
   render();
-});
+};
 
 const modeSel = $<HTMLSelectElement>("mode");
 modeSel.innerHTML = MODES.map((m) => `<option value="${m.id}">${m.label}</option>`).join("");
@@ -111,7 +101,7 @@ seg<PlaneKind>($("plane-seg"), [
   { v: "path", label: "Path plane", title: "The plane the curve bends in" },
   { v: "horizontal", label: "Horizontal" },
   { v: "vertical", label: "Vertical" },
-], (v) => { state.plane.kind = v; fitPlane(); render(); });
+], (v) => { state.plane.kind = v; fitPlane(); slice.resetView(); render(); });
 
 const bind = (id: string, apply: (v: number) => void) => {
   const el = $<HTMLInputElement>(id);
@@ -136,11 +126,6 @@ for (const which of ["a", "b"] as const) {
     render();
   };
 }
-$("swap").onclick = () => {
-  [state.a, state.b] = [state.b, state.a];
-  state.points.reverse();
-  render();
-};
 
 $("add-point").onclick = () => {
   const pts = state.points;
@@ -163,9 +148,60 @@ $("copy").onclick = async () => {
   setTimeout(() => (btn.textContent = "Copy CSS"), 1200);
 };
 
+// --- top bar popovers ----------------------------------------------------------
+
+const popButtons = [...document.querySelectorAll<HTMLButtonElement>(".pop-btn")];
+const closePops = (except?: HTMLButtonElement) =>
+  popButtons.forEach((b) => b !== except && b.setAttribute("aria-expanded", "false"));
+popButtons.forEach((btn) => {
+  btn.onclick = () => {
+    const open = btn.getAttribute("aria-expanded") !== "true";
+    closePops(btn);
+    btn.setAttribute("aria-expanded", String(open));
+  };
+});
+document.addEventListener("pointerdown", (e) => {
+  if (!(e.target as Element).closest(".pop")) closePops();
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") closePops();
+});
+
+// --- floating widgets ----------------------------------------------------------
+
+// Charts start folded so the first view is just the gradient; remembered per viewer.
+const WIDGET_DEFAULTS: Record<string, boolean> = { gradient: true, channels: false, speed: false };
+const WIDGET_KEY = "gradient-paths:widgets";
+const widgetOpen: Record<string, boolean> = { ...WIDGET_DEFAULTS };
+try {
+  Object.assign(widgetOpen, JSON.parse(localStorage.getItem(WIDGET_KEY) ?? "{}"));
+} catch {
+  /* storage unavailable: use defaults */
+}
+document.querySelectorAll<HTMLElement>(".widget").forEach((w) => {
+  const id = w.dataset.widget!;
+  const head = w.querySelector<HTMLButtonElement>(".widget-head")!;
+  head.setAttribute("aria-expanded", String(widgetOpen[id] ?? true));
+  head.onclick = () => {
+    widgetOpen[id] = head.getAttribute("aria-expanded") !== "true";
+    head.setAttribute("aria-expanded", String(widgetOpen[id]));
+    try {
+      localStorage.setItem(WIDGET_KEY, JSON.stringify(widgetOpen));
+    } catch {
+      /* ignore */
+    }
+    render({ keepPlane: true }); // canvases sized while hidden need a redraw
+  };
+});
+
 // --- views -------------------------------------------------------------------
 
-const view3d = new View3D($("view3d"));
+const view3d = new View3D($("view3d"), {
+  onDragStart: () => {},
+  onDragEnd: () => render(),
+  onEndpoint: (which, rgb) => { state[which] = rgb; scheduleRender(); },
+  onPoint: (i, e) => { state.points[i] = e; scheduleRender(); },
+});
 $("proj").onclick = () => { $("proj").textContent = view3d.toggleProjection() === "persp" ? "Persp" : "Ortho"; };
 document.querySelectorAll<HTMLButtonElement>("[data-snap]").forEach((b) => {
   b.onclick = () => {
@@ -176,8 +212,8 @@ document.querySelectorAll<HTMLButtonElement>("[data-snap]").forEach((b) => {
 $("reset-cam").onclick = () => { view3d.reset(); $("proj").textContent = "Persp"; };
 
 const slice = new SliceView($("slice"), {
-  onDragStart: () => (frozenPlane = currentPlane ?? null),
-  onDragEnd: () => { frozenPlane = null; render(); },
+  onDragStart: () => (lockedPlane = currentPlane ?? null),
+  onDragEnd: () => render({ keepPlane: true }),
   onEndpoint: (which, rgb) => { state[which] = rgb; scheduleRender(); },
   onPoint: (i, e) => { state.points[i] = e; scheduleRender(); },
   onAddPoint: (e) => {
@@ -191,9 +227,39 @@ const slice = new SliceView($("slice"), {
       if (cost < bestCost) { bestCost = cost; best = i; }
     }
     state.points.splice(best, 0, e);
-    render();
+    render({ keepPlane: true });
   },
 });
+
+// Keep the slice plot clear of the floating UI: its header and plane controls
+// above, and the widget title bars below. Only the title bars count, so that
+// opening or closing a widget never resizes the plot; open widgets float over it.
+const updateSliceInset = () => {
+  const box = $("slice").getBoundingClientRect();
+  let top = 0;
+  const view = $("slice").closest(".view")!;
+  for (const el of [view.querySelector(".view-head")!, view.querySelector(".viewport-hint")!, $("plane-controls")]) {
+    const r = el.getBoundingClientRect();
+    if (r.height > 0) top = Math.max(top, r.bottom - box.top + 8);
+  }
+  let bottom = 0;
+  const overlay = document.querySelector<HTMLElement>(".overlay")!;
+  if (getComputedStyle(overlay).position === "absolute") {
+    const gap = box.bottom - overlay.getBoundingClientRect().bottom;
+    overlay.querySelectorAll<HTMLElement>(".widget").forEach((w) => {
+      const r = w.getBoundingClientRect();
+      const head = w.querySelector(".widget-head")!.getBoundingClientRect().height;
+      if (r.right > box.left && r.left < box.right) bottom = Math.max(bottom, gap + head + 8);
+    });
+  }
+  slice.setInsets(Math.max(0, top), Math.max(0, bottom));
+};
+const insetObserver = new ResizeObserver(updateSliceInset);
+insetObserver.observe(document.querySelector(".overlay")!);
+insetObserver.observe($("slice"));
+insetObserver.observe($("plane-controls"));
+
+$("reset-slice").onclick = () => slice.resetView();
 
 const chartChannels = new LineChart($("chart-channels"));
 const chartSpeed = new LineChart($("chart-speed"));
@@ -223,10 +289,12 @@ const round2 = (x: number) => Math.round(Math.max(-1, Math.min(1, x)) * 100) / 1
 
 let raf = 0;
 function scheduleRender() {
-  if (!raf) raf = requestAnimationFrame(() => { raf = 0; render(); });
+  // Only 2D drags and resizes come through here; neither should re-orient the slice.
+  if (!raf) raf = requestAnimationFrame(() => { raf = 0; render({ keepPlane: true }); });
 }
 
-function render() {
+function render(opts: { keepPlane?: boolean } = {}) {
+  if (!opts.keepPlane) lockedPlane = null;
   const info = modeInfo(state.mode);
   const A = space.embed(space.fromRGB(state.a));
   const B = space.embed(space.fromRGB(state.b));
@@ -236,7 +304,7 @@ function render() {
   const path = buildPath(space, state.a, state.b, { ...state, points: used });
   const grad = computeGradient(space, path, state);
   lastDense = grad.dense.map((d) => d.embed);
-  const plane = frozenPlane ?? makePlane(state.plane.kind, state.plane.offset, state.plane.angle, space, A, B, lastDense, currentPlane);
+  const plane = lockedPlane ?? makePlane(state.plane.kind, state.plane.offset, state.plane.angle, space, A, B, lastDense, currentPlane);
   currentPlane = plane;
   const aHex = rgbToHex(state.a);
   const bHex = rgbToHex(state.b);
@@ -248,7 +316,8 @@ function render() {
     const el = $<HTMLInputElement>(id);
     if (document.activeElement !== el) el.value = hex;
   }
-  segSet($("space-seg"), space.id);
+  spaceSel.value = space.id;
+  spaceSel.title = `${space.label} — ${space.blurb}`;
   $("space-blurb").textContent = space.blurb;
   modeSel.value = state.mode;
   $("mode-hint").innerHTML = info.hint.replace(/`([^`]+)`/g, "<code>$1</code>");
@@ -259,6 +328,8 @@ function render() {
   setRange("bend", state.arcBend, `${Math.round(state.arcBend * 100)}%`);
   setRange("roll", state.arcRoll, `${Math.round(state.arcRoll)}°`);
   setRange("stops", state.stops, String(state.stops));
+  const spacingName = { parameter: "even t", space: "even distance", perceptual: "perceptual" }[state.spacing];
+  $("sampling-btn").textContent = `${state.stops} stops · ${spacingName}`;
   segSet($("spacing-seg"), state.spacing);
   $<HTMLSelectElement>("easing").value = state.easing;
   segSet($("gamut-seg"), state.gamut);
