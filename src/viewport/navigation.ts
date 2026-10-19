@@ -1,7 +1,6 @@
 import {
   Box3,
   MathUtils,
-  OrthographicCamera,
   Plane,
   Quaternion,
   Raycaster,
@@ -537,21 +536,13 @@ export class Navigation {
   }
 
   /**
-   * Move toward or away from the pivot. In perspective that is a uniform
-   * scaling of camera and target about the pivot; in orthographic it is a zoom
-   * plus the lateral shift that keeps the pivot under the cursor.
+   * Move toward or away from the pivot: a zoom plus the lateral shift that
+   * keeps the pivot under the cursor.
    */
   private dolly(dy: number): void {
     const camera = this.rig.camera;
     // Negated: dragging up pulls the camera back, down pushes it in.
     const scale = Math.exp(-dy / DOLLY_PIXELS);
-
-    if (!(camera instanceof OrthographicCamera)) {
-      camera.position.sub(this.pivot).multiplyScalar(scale).add(this.pivot);
-      this.controls.target.sub(this.pivot).multiplyScalar(scale).add(this.pivot);
-      camera.updateMatrixWorld(true);
-      return;
-    }
 
     _ndcBefore.copy(this.pivot).project(camera);
     camera.zoom = MathUtils.clamp(camera.zoom / scale, 1e-3, 1e4);
@@ -579,17 +570,8 @@ export class Navigation {
     const height = this.canvas.clientHeight || 1;
     camera.matrixWorld.extractBasis(_right, _up, _v);
 
-    let perPixelX: number;
-    let perPixelY: number;
-    if (camera instanceof OrthographicCamera) {
-      perPixelX = (camera.right - camera.left) / (camera.zoom * width);
-      perPixelY = (camera.top - camera.bottom) / (camera.zoom * height);
-    } else {
-      const distance = camera.position.distanceTo(this.controls.target);
-      perPixelY =
-        (2 * distance * Math.tan(MathUtils.degToRad(camera.fov) / 2)) / height;
-      perPixelX = perPixelY;
-    }
+    const perPixelX = (camera.right - camera.left) / (camera.zoom * width);
+    const perPixelY = (camera.top - camera.bottom) / (camera.zoom * height);
 
     _pan
       .copy(_right)

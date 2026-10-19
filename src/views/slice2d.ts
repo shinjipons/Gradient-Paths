@@ -45,7 +45,8 @@ export class SliceView {
   private bg = document.createElement("canvas");
   private bgKey = "";
   private input: DrawInput | null = null;
-  private drag: { handle: Handle; start: Vec3; sx: number; sy: number } | null = null;
+  /** `sx`/`sy`: where the drag began; `x`/`y`: the latest pointer position. */
+  private drag: { handle: Handle; start: Vec3; sx: number; sy: number; x: number; y: number } | null = null;
   private pan: { x: number; y: number } | null = null;
   private hover: Handle | null = null;
   /** View transform over the fitted layout: screen = fitted * zoom + offset. */
@@ -69,6 +70,8 @@ export class SliceView {
     this.canvas.addEventListener("pointermove", this.onMove);
     this.canvas.addEventListener("pointerup", this.onUp);
     this.canvas.addEventListener("pointercancel", this.onUp);
+    window.addEventListener("keydown", this.onKey);
+    window.addEventListener("keyup", this.onKey);
     this.canvas.addEventListener("dblclick", this.onDbl);
     this.canvas.addEventListener("wheel", this.onWheel, { passive: false });
     // Middle press opens autoscroll in Chrome; right press opens the menu.
@@ -155,6 +158,7 @@ export class SliceView {
 
   /** Rasterize the slice under the whole canvas, at the current pan and zoom. */
   private renderBackground(space: ColorSpace, pl: Plane, w: number, h: number) {
+    if (!(w > 0 && h > 0)) return; // container not laid out yet
     const cols = Math.max(2, Math.min(MAX_COLS, Math.ceil(w / 2)));
     const rows = Math.max(2, Math.round((cols * h) / w));
     const { s: fs, ox, oy } = this.size();
@@ -226,27 +230,23 @@ export class SliceView {
     ctx.imageSmoothingEnabled = true;
     ctx.drawImage(this.bg, 0, 0, w, h);
 
-    // The plane's bounds, in the same hues as the plane outline in 3D.
+    // The plane's bounds, dotted in the same color as the plane outline in 3D.
     {
       const [u0, u1, v0, v1] = pl.view;
       const c = [[u0, v0], [u1, v0], [u1, v1], [u0, v1]].map((uv) => this.toPx(pl, uv as [number, number]));
-      const edges: [number, number, string][] = [
-        [0, 1, PLANE_EDGE.u],
-        [2, 3, PLANE_EDGE.u],
-        [1, 2, PLANE_EDGE.v],
-        [3, 0, PLANE_EDGE.v],
-      ];
-      ctx.lineCap = "square";
-      for (const [width, color] of [[5, "rgba(0,0,0,0.6)"], [2, null]] as const) {
+      ctx.lineCap = "round";
+      ctx.setLineDash([0, 6]);
+      for (const [width, color] of [[5, "rgba(0,0,0,0.6)"], [2.5, PLANE_EDGE]] as const) {
         ctx.lineWidth = width;
-        for (const [i, j, hue] of edges) {
-          ctx.strokeStyle = color ?? hue;
-          ctx.beginPath();
-          ctx.moveTo(...c[i]);
-          ctx.lineTo(...c[j]);
-          ctx.stroke();
-        }
+        ctx.strokeStyle = color;
+        ctx.beginPath();
+        ctx.moveTo(...c[0]);
+        for (const p of c.slice(1)) ctx.lineTo(...p);
+        ctx.closePath();
+        ctx.stroke();
       }
+      ctx.setLineDash([]);
+      ctx.lineCap = "butt";
     }
 
     // Neutral axis, projected.
@@ -353,9 +353,8 @@ export class SliceView {
     // Pinned to the uncovered area, not the plot, so they stay put while panning.
     const top = this.insetTop;
     const bottom = h - this.insetBottom;
-    ctx.fillStyle = PLANE_EDGE.u;
+    ctx.fillStyle = PLANE_EDGE;
     if (pl.uLabel) ctx.fillText(`${pl.uLabel} →`, w - 12, bottom - 6);
-    ctx.fillStyle = PLANE_EDGE.v;
     ctx.save();
     ctx.translate(14, top + 12);
     ctx.rotate(-Math.PI / 2);
@@ -404,7 +403,7 @@ export class SliceView {
     if (!h) return;
     const start =
       h.kind === "point" ? this.input.points[h.index] : h.kind === "a" ? this.input.A : this.input.B;
-    this.drag = { handle: h, start, sx: x, sy: y };
+    this.drag = { handle: h, start, sx: x, sy: y, x, y };
     this.canvas.setPointerCapture(e.pointerId);
     this.cb.onDragStart();
   };
@@ -428,6 +427,24 @@ export class SliceView {
       }
       return;
     }
+    this.drag.x = x;
+    this.drag.y = y;
+    this.applyDrag(e.shiftKey);
+  };
+
+  /** Pressing or releasing Shift mid-drag re-snaps the handle without a pointer move. */
+  private onKey = (e: KeyboardEvent) => {
+    if (e.key === "Shift" && this.drag) this.applyDrag(e.type === "keydown");
+  };
+
+  /** Move the dragged handle to the pointer; Shift locks it to the screen's dominant axis. */
+  private applyDrag(shift: boolean) {
+    if (!this.input || !this.drag) return;
+    let { x, y } = this.drag;
+    if (shift) {
+      if (Math.abs(x - this.drag.sx) >= Math.abs(y - this.drag.sy)) y = this.drag.sy;
+      else x = this.drag.sx;
+    }
     const pl = this.input.plane;
     const [s0, t0] = this.toPlane(pl, this.drag.sx, this.drag.sy);
     const [s1, t1] = this.toPlane(pl, x, y);
@@ -444,7 +461,7 @@ export class SliceView {
       const rgb = sp.toRGB(sp.unembed(moved));
       if (rgb.every(Number.isFinite)) this.cb.onEndpoint(h.kind, rgb.map(clamp01) as Vec3);
     }
-  };
+  }
 
   private onUp = () => {
     if (this.pan) {

@@ -169,14 +169,7 @@ const view3d = new View3D($("view3d"), {
   onEndpoint: (which, rgb) => { state[which] = rgb; scheduleRender(); },
   onPoint: (i, e) => { state.points[i] = e; scheduleRender(); },
 });
-$("proj").onclick = () => { $("proj").textContent = view3d.toggleProjection() === "persp" ? "Persp" : "Ortho"; };
-document.querySelectorAll<HTMLButtonElement>("[data-snap]").forEach((b) => {
-  b.onclick = () => {
-    view3d.snap(b.dataset.snap as "top" | "front" | "right");
-    $("proj").textContent = "Ortho";
-  };
-});
-$("reset-cam").onclick = () => { view3d.reset(); $("proj").textContent = "Persp"; };
+$("reset-cam").onclick = () => view3d.reset();
 
 const slice = new SliceView($("slice"), {
   onDragStart: () => (lockedPlane = currentPlane ?? null),
@@ -198,16 +191,14 @@ const slice = new SliceView($("slice"), {
   },
 });
 
-// Keep the slice plot clear of the floating UI: its header and hint above,
-// the speed chart below.
+// Keep the slice plot clear of the floating UI: its header above, the speed
+// chart below.
 const updateSliceInset = () => {
   const box = $("slice").getBoundingClientRect();
   let top = 0;
   const view = $("slice").closest(".view")!;
-  for (const el of [view.querySelector(".view-head")!, view.querySelector(".viewport-hint")!]) {
-    const r = el.getBoundingClientRect();
-    if (r.height > 0) top = Math.max(top, r.bottom - box.top + 8);
-  }
+  const head = view.querySelector(".view-head")!.getBoundingClientRect();
+  if (head.height > 0) top = head.bottom - box.top + 8;
   // The speed chart is always open, so reserving all of it never resizes the plot.
   let bottom = 0;
   const speed = view.querySelector<HTMLElement>(".speed-panel")!;
@@ -274,7 +265,7 @@ function render(opts: { keepPlane?: boolean } = {}) {
   setRange("roll", state.arcRoll, `${Math.round(state.arcRoll)}°`);
   setRange("stops", state.stops, String(state.stops));
   const spacingName = { parameter: "even t", space: "even distance", perceptual: "perceptual" }[state.spacing];
-  $("sampling-btn").textContent = `${state.stops} stops · ${spacingName}`;
+  $("sampling-btn").textContent = `Spacing · ${spacingName}`;
   segSet($("spacing-seg"), state.spacing);
   $<HTMLSelectElement>("easing").value = state.easing;
   segSet($("gamut-seg"), state.gamut);

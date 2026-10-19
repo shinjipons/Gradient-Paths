@@ -10,16 +10,20 @@
     <div class="app">
       <header class="topbar">
         <div class="group" role="group" aria-label="Colors">
-          <label class="swatch-field">
-            <span class="tag">A</span>
-            <input type="color" id="a-color" />
-            <input type="text" id="a-hex" spellcheck="false" maxlength="7" aria-label="Start color hex" />
-          </label>
-          <label class="swatch-field">
-            <span class="tag">B</span>
-            <input type="color" id="b-color" />
-            <input type="text" id="b-hex" spellcheck="false" maxlength="7" aria-label="End color hex" />
-          </label>
+          <div class="endpoint">
+            <span class="tag" aria-hidden="true">A</span>
+            <label class="swatch-field">
+              <input type="color" id="a-color" aria-label="Start color" />
+              <input type="text" id="a-hex" spellcheck="false" maxlength="7" aria-label="Start color hex" />
+            </label>
+          </div>
+          <div class="endpoint">
+            <span class="tag" aria-hidden="true">B</span>
+            <label class="swatch-field">
+              <input type="color" id="b-color" aria-label="End color" />
+              <input type="text" id="b-hex" spellcheck="false" maxlength="7" aria-label="End color hex" />
+            </label>
+          </div>
         </div>
 
         <div class="group" role="group" aria-label="Color space">
@@ -62,13 +66,12 @@
         </div>
 
         <div class="group" role="group" aria-label="Sampling">
+          <label class="group-label" for="stops">Stops</label>
+          <input type="range" id="stops" class="stops-range" min="2" max="32" step="1" />
+          <output id="stops-out" class="stops-out" for="stops"></output>
           <div class="pop align-right">
             <button class="pop-btn" aria-expanded="false" id="sampling-btn">Sampling</button>
             <div class="pop-panel">
-              <label class="field">
-                <span>Stops <output id="stops-out"></output></span>
-                <input type="range" id="stops" min="2" max="32" step="1" />
-              </label>
               <div class="field">
                 <span>Spacing</span>
                 <div class="seg small" id="spacing-seg"></div>
@@ -107,10 +110,6 @@
                     <option value="none">Hidden</option>
                   </select>
                   <input type="range" id="opacity" min="0.05" max="1" step="0.05" title="Surface opacity" />
-                  <button id="proj" class="text-btn" title="Perspective / orthographic">Persp</button>
-                  <button data-snap="top" class="text-btn">Top</button>
-                  <button data-snap="front" class="text-btn">Front</button>
-                  <button data-snap="right" class="text-btn">Right</button>
                   <button id="reset-cam" class="text-btn" title="Reset camera">⟲</button>
                 </div>
               </div>
@@ -120,7 +119,6 @@
                 <div class="chart-host" id="chart-channels"></div>
               </section>
               <div class="viewport" id="view3d">
-                <p class="viewport-hint">Right- or middle-drag to orbit · Shift to truck · Ctrl to dolly · wheel or pinch to zoom · <kbd>`</kbd> to fly</p>
               </div>
             </div>
             <div class="card view">
@@ -136,7 +134,6 @@
                 <div class="chart-host" id="chart-speed"></div>
               </section>
               <div class="viewport" id="slice">
-                <p class="viewport-hint">Drag empty space, or right- or middle-drag, to pan · wheel or pinch to zoom</p>
               </div>
             </div>
           </section>
