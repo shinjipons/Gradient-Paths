@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://gradient-paths.vercel.app/sitemap.xml
+Sitemap: https://gradientpaths.shinjipons.com/sitemap.xml
