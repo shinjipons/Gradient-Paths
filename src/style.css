@@ -32,6 +32,14 @@ body { margin: 0; background: var(--bg); }
 .group { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .group + .group { padding-left: 12px; border-left: 1px solid var(--border); }
 .group-label { color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; font-weight: 600; }
+/* Narrow: the wrapper steps aside and its groups wrap in the bar as before. */
+.topbar-controls { display: contents; }
+/* Wide enough to fit on one row: controls centered, Copy CSS pinned right. */
+@media (min-width: 1240px) {
+  .topbar { display: grid; grid-template-columns: 1fr auto 1fr; }
+  .topbar-controls { grid-column: 2; display: flex; align-items: center; gap: 12px; }
+  .topbar .primary-btn { grid-column: 3; justify-self: end; }
+}
 .topbar select { width: auto; padding: 4px 6px; font-size: 12px; }
 .topbar .seg { flex-wrap: nowrap; }
 .topbar .swatch-field { width: 104px; }
