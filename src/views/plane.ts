@@ -15,11 +15,10 @@ export interface Plane {
 }
 
 /**
- * The slice's bounds wear these hues in both views, so the 3D plane and the 2D
- * frame read as the same object: `u` for the edges running along the plane's
- * u axis (top and bottom in 2D), `v` for those along v (left and right).
+ * The slice's bounds wear this color and dot pattern in both views, so the 3D
+ * plane and the 2D frame read as the same object.
  */
-export const PLANE_EDGE = { u: "#ff8a3d", v: "#3ddcff" } as const;
+export const PLANE_EDGE = "#ffb347";
 
 export const project = (pl: Plane, p: Vec3): [number, number] => {
   const r = sub(p, pl.origin);

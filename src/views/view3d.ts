@@ -35,9 +35,9 @@ import { clamp01, type Vec3 } from "../color/convert";
 import type { ColorSpace } from "../color/spaces";
 import type { Sample } from "../path/paths";
 import type { SolidStyle } from "../state";
+import { AxisGizmo } from "../viewport/axisgizmo";
 import { CameraRig, type SnapView } from "../viewport/cameras";
 import { ViewControls } from "../viewport/controls";
-import { Flythrough } from "../viewport/flythrough";
 import { Navigation } from "../viewport/navigation";
 import { PLANE_EDGE, unproject, type Plane } from "./plane";
 
@@ -75,8 +75,8 @@ const AXIS_INDEX: Record<string, 0 | 1 | 2> = { X: 0, Y: 1, Z: 2 };
 
 /**
  * 3D view of the sRGB gamut as it sits in the current space, with the path
- * running through it. Camera navigation is the house scheme (middle/right
- * drag orbit, wheel dolly, trackpad gestures, ` for flythrough).
+ * running through it, always in orthographic projection. Camera navigation is
+ * the house scheme (middle/right drag orbit, wheel zoom, trackpad gestures).
  */
 export class View3D {
   private renderer: WebGLRenderer;
@@ -88,19 +88,18 @@ export class View3D {
   private overlay = new Scene();
   private rig: CameraRig;
   private controls: ViewControls;
-  private nav: Navigation;
-  private fly: Flythrough;
   private gamut = new Group();
   private pathGroup = new Group();
   private planeGroup = new Group();
   private solidObjects: Object3D[] = [];
   private gamutKey = "";
-  private last = performance.now();
   private space: ColorSpace | null = null;
 
   // Handle selection (A, B, control points) + translate gizmo. The gizmo drives a persistent proxy
   // object, since the path meshes are rebuilt on every update.
   private gizmo: TransformControls;
+  /** Blender-style axis widget in the top-right corner. */
+  private axisGizmo: AxisGizmo;
   private proxy = new Object3D();
   /** Selected handle: "a", "b", or "p<i>" for control point i. */
   private selected: string | null = null;
@@ -128,22 +127,15 @@ export class View3D {
 
     this.rig = new CameraRig(1);
     this.controls = new ViewControls(this.rig, canvas);
-    this.nav = new Navigation(canvas, this.rig, this.controls, {
+    new Navigation(canvas, this.rig, this.controls, {
       solidObjects: this.solidObjects,
       contentCenter: (out) => out.set(0, 0, 0),
-    });
-    this.fly = new Flythrough(canvas, this.rig, this.controls, container, {
-      onActiveChange: (active) => {
-        this.nav.enabled = !active;
-        this.controls.enabled = !active;
-        this.gizmo.enabled = !active;
-      },
-      onProjectionChange: () => this.controls.onCameraToggled(),
     });
 
     this.gizmo = new TransformControls(this.rig.camera, canvas);
     this.gizmo.setMode("translate");
     this.gizmo.setSize(0.6);
+    faceGizmoToCamera(this.gizmo);
     this.snapGuide.visible = false;
     this.snapGuide.renderOrder = 11;
     this.snapGuide.frustumCulled = false; // its geometry changes every drag
@@ -172,8 +164,14 @@ export class View3D {
     canvas.addEventListener("pointerup", this.onPointerUp);
     canvas.addEventListener("pointermove", this.onHover);
     window.addEventListener("keydown", (e) => {
-      if (e.key === "Escape" && this.selected && !this.fly.active) this.select(null);
+      if (e.key === "Escape" && this.selected) this.select(null);
     });
+
+    this.axisGizmo = new AxisGizmo({
+      onSnap: (view) => this.snap(view),
+      onOrbit: (dx, dy) => this.orbitBy(dx, dy),
+    });
+    container.appendChild(this.axisGizmo.element);
 
     this.scene.add(this.gamut, this.planeGroup);
     this.overlay.add(this.pathGroup, this.proxy, this.gizmo.getHelper(), this.snapGuide);
@@ -192,41 +190,32 @@ export class View3D {
     this.rig.setAspect(r.width / r.height);
     for (const m of this.lineMaterials) m.resolution.set(r.width, r.height);
     // Until the user moves the camera, keep the whole gamut framed.
-    if (this.homePos && this.rig.projection === "persp" && this.rig.persp.position.distanceTo(this.homePos) < 1e-6) {
+    const cam = this.rig.camera;
+    if (this.homeView && cam.position.distanceTo(this.homeView.pos) < 1e-6 && cam.zoom === this.homeView.zoom) {
       this.home();
     }
   }
 
-  private homePos: Vector3 | null = null;
+  private homeView: { pos: Vector3; zoom: number } | null = null;
 
-  /** Default three-quarter view, far enough back to fit the gamut at this aspect. */
+  /** Default three-quarter view, zoomed to fit the gamut at this aspect. */
   private home() {
-    const cam = this.rig.persp;
-    const half = (cam.fov * Math.PI) / 360;
-    const hHalf = Math.atan(Math.tan(half) * cam.aspect);
-    const radius = S * 1.55;
-    const d = radius / Math.sin(Math.min(half, hHalf));
-    cam.position.copy(HOME_DIR).multiplyScalar(d);
-    cam.lookAt(0, 0, 0);
-    this.homePos = cam.position.clone();
+    const cam = this.rig.camera;
+    const radius = S * 1.9;
+    const aspect = (cam.right - cam.left) / (cam.top - cam.bottom);
+    this.rig.frame(new Vector3(), HOME_DIR, radius / Math.min(1, aspect));
+    this.homeView = { pos: cam.position.clone(), zoom: cam.zoom };
   }
 
   private frame = () => {
-    const now = performance.now();
-    const dt = Math.min(0.1, (now - this.last) / 1000);
-    this.last = now;
-    if (this.fly.active) this.fly.update(dt);
-    else this.controls.update();
-    // The rig swaps cameras on projection toggles and snaps.
-    if (this.gizmo.camera !== this.rig.camera) this.gizmo.camera = this.rig.camera;
+    this.controls.update();
     this.sizeLabels();
+    this.axisGizmo.update(this.rig.camera);
     this.renderer.clear();
     this.renderer.render(this.scene, this.rig.camera);
     this.renderer.clearDepth();
     this.renderer.render(this.overlay, this.rig.camera);
   };
-
-  private readonly labelPos = new Vector3();
 
   /** Scale every label so its text keeps a fixed pixel height on screen. */
   private sizeLabels() {
@@ -234,7 +223,7 @@ export class View3D {
     const fit = (o: Object3D) => {
       const px = o.userData.labelPx as number | undefined;
       if (px === undefined) return;
-      const h = px * this.rig.worldPerPixel(o.getWorldPosition(this.labelPos), cssH);
+      const h = px * this.rig.worldPerPixel(cssH);
       o.scale.set(h * o.userData.labelAspect, h, 1);
     };
     this.scene.traverse(fit);
@@ -270,7 +259,7 @@ export class View3D {
     this.snapGuide.visible = false;
     if (i === undefined || !this.selected) return;
     const cssH = this.renderer.domElement.clientHeight || 1;
-    const tol = SNAP_PX * this.rig.worldPerPixel(p, cssH);
+    const tol = SNAP_PX * this.rig.worldPerPixel(cssH);
     let other: Vector3 | null = null;
     let best = tol;
     for (const [id, h] of this.handles) {
@@ -303,7 +292,7 @@ export class View3D {
     // TransformControls listens first, so `axis` already says whether this
     // press landed on one of its handles; such a press belongs to the gizmo.
     const onGizmo = this.gizmo.axis !== null;
-    this.press = e.button === 0 && !this.fly.active && !onGizmo ? { x: e.clientX, y: e.clientY } : null;
+    this.press = e.button === 0 && !onGizmo ? { x: e.clientX, y: e.clientY } : null;
   };
 
   private onPointerUp = (e: PointerEvent) => {
@@ -315,35 +304,44 @@ export class View3D {
   };
 
   private onHover = (e: PointerEvent) => {
-    if (e.buttons !== 0 || this.fly.active) return;
+    if (e.buttons !== 0) return;
     const over = !this.gizmo.axis && this.pickHandle(e) !== null;
     this.renderer.domElement.style.cursor = over ? "pointer" : "";
   };
 
   // --- toolbar actions ---------------------------------------------------------
 
-  toggleProjection(): string {
-    const p = this.rig.toggle(this.controls.target);
-    this.controls.onCameraToggled();
-    return p;
+  snap(view: SnapView) {
+    this.rig.snap(view, this.controls.target);
+    this.controls.onUpChanged();
   }
 
-  snap(view: SnapView) {
-    this.rig.snapOrtho(view, this.controls.target);
-    this.controls.onCameraToggled();
+  /**
+   * Turntable orbit about the target, Z up, as when dragging the axis gizmo:
+   * the scene follows the pointer. Stops just short of the poles.
+   */
+  private orbitBy(dx: number, dy: number) {
+    const RAD_PER_PX = 0.01;
+    const target = this.controls.target;
+    const offset = this.rig.camera.position.clone().sub(target);
+    const r = offset.length();
+    const theta = Math.atan2(offset.y, offset.x) - dx * RAD_PER_PX;
+    const phi = Math.min(Math.PI - 1e-3, Math.max(1e-3, Math.acos(offset.z / r) - dy * RAD_PER_PX));
+    offset.set(Math.sin(phi) * Math.cos(theta), Math.sin(phi) * Math.sin(theta), Math.cos(phi)).multiplyScalar(r);
+    const cam = this.rig.camera;
+    if (cam.up.z !== 1) {
+      this.rig.setUp(new Vector3(0, 0, 1));
+      this.controls.onUpChanged();
+    }
+    cam.position.copy(target).add(offset);
+    cam.lookAt(target);
   }
 
   reset() {
-    if (this.rig.projection === "ortho") this.rig.toggle(this.controls.target);
     this.controls.target.set(0, 0, 0);
-    this.rig.persp.up.set(0, 0, 1);
-    this.rig.ortho.up.set(0, 0, 1);
+    this.rig.setUp(new Vector3(0, 0, 1));
     this.home();
-    this.controls.onCameraToggled();
-  }
-
-  get projection() {
-    return this.rig.projection;
+    this.controls.onUpChanged();
   }
 
   // --- gamut solid -----------------------------------------------------------
@@ -494,29 +492,28 @@ export class View3D {
       unproject(pl, u1, v1),
       unproject(pl, u0, v1),
     ].map(v3);
-    // Bounds in the same hues as the 2D slice's frame: u edges, then v edges.
+    // Bounds dotted in the same color as the 2D slice's frame.
     // Drawn through the gamut, with a dark casing, so the whole outline shows.
-    const order = [0, 1, 2, 3, 1, 2, 3, 0];
+    const order = [0, 1, 1, 2, 2, 3, 3, 0];
     const positions = order.flatMap((i) => corners[i].toArray());
-    const u = new Color().setStyle(PLANE_EDGE.u, "srgb");
-    const v = new Color().setStyle(PLANE_EDGE.v, "srgb");
-    const colors = [u, u, u, u, v, v, v, v].flatMap((c) => [c.r, c.g, c.b]);
     const size = this.renderer.getSize(new Vector2());
     this.lineMaterials = [];
-    for (const [width, colored, order] of [[5, false, 1], [2, true, 2]] as const) {
+    for (const [width, colored, order] of [[5, false, 1], [2.5, true, 2]] as const) {
       const geo = new LineSegmentsGeometry().setPositions(positions);
-      if (colored) geo.setColors(colors);
       const mat = new LineMaterial({
         linewidth: width,
-        vertexColors: colored,
-        color: colored ? 0xffffff : 0x000000,
+        color: colored ? new Color().setStyle(PLANE_EDGE, "srgb") : 0x000000,
         transparent: true,
         opacity: colored ? 1 : 0.6,
         depthTest: false,
+        dashed: true,
+        dashSize: 0.012,
+        gapSize: 0.03,
       });
       mat.resolution.copy(size);
       this.lineMaterials.push(mat);
       const line = new LineSegments2(geo, mat);
+      line.computeLineDistances();
       line.renderOrder = order;
       this.planeGroup.add(line);
     }
@@ -528,6 +525,55 @@ export class View3D {
       ),
     );
   }
+}
+
+/**
+ * Point the translate gizmo at the camera: each axis keeps one arrow (its
+ * negative-side arrow and picker are removed), and the arrows and plane
+ * handles are mirrored into the octant facing the camera every frame, so
+ * nothing hides behind the handle (three r170 dropped its own axis flip).
+ */
+function faceGizmoToCamera(controls: TransformControls) {
+  type Gizmo = Object3D & { eye: Vector3; gizmo: Record<string, Object3D>; picker: Record<string, Object3D> };
+  const g = (controls as unknown as { _gizmo: Gizmo })._gizmo;
+  const groups = [g.gizmo.translate, g.picker.translate];
+
+  // The geometry is baked in place, so a part's side is where its bounds sit.
+  const AXIS: Record<string, 0 | 1 | 2> = { X: 0, Y: 1, Z: 2 };
+  const center = new Vector3();
+  for (const group of groups) {
+    for (const part of [...group.children]) {
+      const i = AXIS[part.name];
+      const geo = (part as Mesh).geometry;
+      if (i === undefined || !geo) continue;
+      geo.computeBoundingBox();
+      if (geo.boundingBox!.getCenter(center).getComponent(i) < -0.1) group.remove(part);
+    }
+  }
+
+  const update = g.updateMatrixWorld.bind(g);
+  g.updateMatrixWorld = (force?: boolean) => {
+    update(force);
+    const sx = g.eye.x < 0 ? -1 : 1;
+    const sy = g.eye.y < 0 ? -1 : 1;
+    const sz = g.eye.z < 0 ? -1 : 1;
+    const flips: Record<string, [number, number, number]> = {
+      X: [sx, 1, 1],
+      Y: [1, sy, 1],
+      Z: [1, 1, sz],
+      XY: [sx, sy, 1],
+      YZ: [1, sy, sz],
+      XZ: [sx, 1, sz],
+    };
+    for (const group of groups) {
+      for (const handle of group.children) {
+        const flip = flips[handle.name];
+        if (!flip || (flip[0] > 0 && flip[1] > 0 && flip[2] > 0)) continue;
+        handle.scale.multiply(new Vector3(...flip));
+        handle.updateMatrixWorld(true);
+      }
+    }
+  };
 }
 
 // --- geometry builders --------------------------------------------------------
