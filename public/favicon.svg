@@ -1,15 +1,18 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <defs>
-    <linearGradient id="g" x1="0" y1="1" x2="1" y2="0">
-      <stop offset="0" stop-color="#3a1358"/>
-      <stop offset="0.35" stop-color="#9a2a90"/>
-      <stop offset="0.6" stop-color="#f55967"/>
-      <stop offset="0.85" stop-color="#ffc289"/>
-      <stop offset="1" stop-color="#fff1c4"/>
-    </linearGradient>
-  </defs>
-  <rect width="64" height="64" rx="14" fill="#120b2e"/>
-  <path d="M12 50 C 14 26, 36 40, 52 14" fill="none" stroke="url(#g)" stroke-width="7" stroke-linecap="round"/>
-  <circle cx="12" cy="50" r="5" fill="#120b2e" stroke="#fff" stroke-width="2.5"/>
-  <circle cx="52" cy="14" r="5" fill="#fff1c4" stroke="#fff" stroke-width="2.5"/>
+<svg width="180" height="180" viewBox="0 0 180 180" fill="none" xmlns="http://www.w3.org/2000/svg">
+<rect width="180" height="180" fill="#1E1E1E"/>
+<rect width="180" height="180" fill="url(#paint0_radial_112_945)"/>
+<defs>
+<radialGradient id="paint0_radial_112_945" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(90 180) rotate(-90) scale(185.294 207.273)">
+<stop stop-color="#40BDCF"/>
+<stop offset="0.111111" stop-color="#5FD7C5"/>
+<stop offset="0.222222" stop-color="#83E6B3"/>
+<stop offset="0.333333" stop-color="#A6E89B"/>
+<stop offset="0.444444" stop-color="#C5DE80"/>
+<stop offset="0.555556" stop-color="#DCC864"/>
+<stop offset="0.666667" stop-color="#EAA84B"/>
+<stop offset="0.777778" stop-color="#EB8337"/>
+<stop offset="0.888889" stop-color="#E25B2B"/>
+<stop offset="1" stop-color="#CD3627"/>
+</radialGradient>
+</defs>
 </svg>
