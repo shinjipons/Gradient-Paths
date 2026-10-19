@@ -1,7 +1,7 @@
 import { clamp01, type Vec3 } from "../color/convert";
 import { isRealColor, type ColorSpace } from "../color/spaces";
 import type { Sample } from "../path/paths";
-import { project, unproject, type Plane } from "./plane";
+import { PLANE_EDGE, project, unproject, type Plane } from "./plane";
 
 export type Handle = { kind: "a" | "b" } | { kind: "point"; index: number };
 
@@ -226,6 +226,29 @@ export class SliceView {
     ctx.imageSmoothingEnabled = true;
     ctx.drawImage(this.bg, 0, 0, w, h);
 
+    // The plane's bounds, in the same hues as the plane outline in 3D.
+    {
+      const [u0, u1, v0, v1] = pl.view;
+      const c = [[u0, v0], [u1, v0], [u1, v1], [u0, v1]].map((uv) => this.toPx(pl, uv as [number, number]));
+      const edges: [number, number, string][] = [
+        [0, 1, PLANE_EDGE.u],
+        [2, 3, PLANE_EDGE.u],
+        [1, 2, PLANE_EDGE.v],
+        [3, 0, PLANE_EDGE.v],
+      ];
+      ctx.lineCap = "square";
+      for (const [width, color] of [[5, "rgba(0,0,0,0.6)"], [2, null]] as const) {
+        ctx.lineWidth = width;
+        for (const [i, j, hue] of edges) {
+          ctx.strokeStyle = color ?? hue;
+          ctx.beginPath();
+          ctx.moveTo(...c[i]);
+          ctx.lineTo(...c[j]);
+          ctx.stroke();
+        }
+      }
+    }
+
     // Neutral axis, projected.
     const [n0, n1] = inp.space.neutral;
     const a0 = this.toPx(pl, project(pl, n0));
@@ -322,14 +345,17 @@ export class SliceView {
     }
 
     // Axis captions.
-    ctx.fillStyle = "rgba(255,255,255,0.55)";
-    ctx.font = "11px ui-sans-serif, system-ui";
+    ctx.font = "600 11px ui-sans-serif, system-ui";
+    ctx.shadowColor = "rgba(0,0,0,0.9)";
+    ctx.shadowBlur = 3;
     ctx.textAlign = "right";
     ctx.textBaseline = "bottom";
     // Pinned to the uncovered area, not the plot, so they stay put while panning.
     const top = this.insetTop;
     const bottom = h - this.insetBottom;
+    ctx.fillStyle = PLANE_EDGE.u;
     if (pl.uLabel) ctx.fillText(`${pl.uLabel} →`, w - 12, bottom - 6);
+    ctx.fillStyle = PLANE_EDGE.v;
     ctx.save();
     ctx.translate(14, top + 12);
     ctx.rotate(-Math.PI / 2);
@@ -337,6 +363,7 @@ export class SliceView {
     ctx.textBaseline = "top";
     if (pl.vLabel) ctx.fillText(`${pl.vLabel} →`, 0, -10);
     ctx.restore();
+    ctx.shadowBlur = 0;
   }
 
   // --- interaction -----------------------------------------------------------

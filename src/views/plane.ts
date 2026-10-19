@@ -1,6 +1,5 @@
 import type { Vec3 } from "../color/convert";
 import type { ColorSpace } from "../color/spaces";
-import type { PlaneKind } from "../state";
 import { cross, dot, len, norm, perpendicular, scale, sub } from "../path/vec";
 
 /** A slicing plane in embed space: origin + orthonormal in-plane axes. */
@@ -15,6 +14,13 @@ export interface Plane {
   vLabel: string;
 }
 
+/**
+ * The slice's bounds wear these hues in both views, so the 3D plane and the 2D
+ * frame read as the same object: `u` for the edges running along the plane's
+ * u axis (top and bottom in 2D), `v` for those along v (left and right).
+ */
+export const PLANE_EDGE = { u: "#ff8a3d", v: "#3ddcff" } as const;
+
 export const project = (pl: Plane, p: Vec3): [number, number] => {
   const r = sub(p, pl.origin);
   return [dot(r, pl.u), dot(r, pl.v)];
@@ -26,48 +32,11 @@ export const unproject = (pl: Plane, s: number, t: number): Vec3 => [
   pl.origin[2] + pl.u[2] * s + pl.v[2] * t,
 ];
 
-const SQUARE: [number, number, number, number] = [-1.2, 1.2, -1.2, 1.2];
-
-export function makePlane(
-  kind: PlaneKind,
-  offset: number,
-  angleDeg: number,
-  space: ColorSpace,
-  A: Vec3,
-  B: Vec3,
-  path: Vec3[],
-  prev?: Plane,
-): Plane {
-  const ch = space.channels;
-  const rgbish = space.family === "RGB";
-  if (kind === "horizontal") {
-    return {
-      origin: [0, 0, offset],
-      u: [1, 0, 0],
-      v: [0, 1, 0],
-      n: [0, 0, 1],
-      view: SQUARE,
-      uLabel: rgbish ? ch[0].name : space.hueIndex >= 0 ? "hue wheel" : ch[1].name,
-      vLabel: rgbish ? ch[1].name : space.hueIndex >= 0 ? "" : ch[2].name,
-    };
-  }
-  if (kind === "vertical") {
-    const r = (angleDeg * Math.PI) / 180;
-    const u: Vec3 = [Math.cos(r), Math.sin(r), 0];
-    const v: Vec3 = [0, 0, 1];
-    const n = cross(u, v);
-    return {
-      origin: scale(n, offset),
-      u,
-      v,
-      n,
-      view: SQUARE,
-      uLabel: `${Math.round(angleDeg)}° direction`,
-      vLabel: rgbish ? ch[2].name : ch[space.id.startsWith("hs") ? 2 : 0].name,
-    };
-  }
-
-  // Path plane: contains A, B and the path point farthest from the chord.
+/**
+ * The plane the path bends in: through A and B, containing the path point
+ * farthest from the chord (or the gray axis direction for a straight path).
+ */
+export function makePlane(space: ColorSpace, A: Vec3, B: Vec3, path: Vec3[], prev?: Plane): Plane {
   const u = norm(sub(B, A));
   const safeU = len(u) > 0 ? u : ([1, 0, 0] as Vec3);
   let far: Vec3 = [0, 0, 0];
@@ -89,7 +58,7 @@ export function makePlane(
     v = len(off) > 1e-3 ? norm(off) : perpendicular(safeU);
   }
   // Keep the side the curve bows to stable between frames; else favor "up".
-  if (prev && prev.vLabel === "bend" ? dot(v, prev.v) < 0 : dot(v, axis) < -1e-6) v = scale(v, -1);
+  if (prev ? dot(v, prev.v) < 0 : dot(v, axis) < -1e-6) v = scale(v, -1);
   const n = cross(safeU, v);
   const origin = scale(n, dot(n, A));
   // Fixed bounds, centered on the space: the whole gamut fits (the RGB cube's

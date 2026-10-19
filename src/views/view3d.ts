@@ -28,6 +28,9 @@ import {
   Object3D,
 } from "three";
 import { TransformControls } from "three/addons/controls/TransformControls.js";
+import { LineMaterial } from "three/addons/lines/LineMaterial.js";
+import { LineSegments2 } from "three/addons/lines/LineSegments2.js";
+import { LineSegmentsGeometry } from "three/addons/lines/LineSegmentsGeometry.js";
 import { clamp01, type Vec3 } from "../color/convert";
 import type { ColorSpace } from "../color/spaces";
 import type { Sample } from "../path/paths";
@@ -36,7 +39,7 @@ import { CameraRig, type SnapView } from "../viewport/cameras";
 import { ViewControls } from "../viewport/controls";
 import { Flythrough } from "../viewport/flythrough";
 import { Navigation } from "../viewport/navigation";
-import { unproject, type Plane } from "./plane";
+import { PLANE_EDGE, unproject, type Plane } from "./plane";
 
 /** Embed space is ~[-1,1]³; this is its size in world units. */
 const S = 2.2;
@@ -187,6 +190,7 @@ export class View3D {
     this.renderer.domElement.style.width = `${r.width}px`;
     this.renderer.domElement.style.height = `${r.height}px`;
     this.rig.setAspect(r.width / r.height);
+    for (const m of this.lineMaterials) m.resolution.set(r.width, r.height);
     // Until the user moves the camera, keep the whole gamut framed.
     if (this.homePos && this.rig.projection === "persp" && this.rig.persp.position.distanceTo(this.homePos) < 1e-6) {
       this.home();
@@ -478,6 +482,9 @@ export class View3D {
     this.setPlane(inp.plane);
   }
 
+  /** Fat-line materials need the viewport size to draw their pixel widths. */
+  private lineMaterials: LineMaterial[] = [];
+
   private setPlane(pl: Plane) {
     disposeChildren(this.planeGroup);
     const [u0, u1, v0, v1] = pl.view;
@@ -487,10 +494,32 @@ export class View3D {
       unproject(pl, u1, v1),
       unproject(pl, u0, v1),
     ].map(v3);
-    const g = new BufferGeometry().setFromPoints([...corners, corners[0]]);
-    this.planeGroup.add(
-      new Line(g, new LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.35 })),
-    );
+    // Bounds in the same hues as the 2D slice's frame: u edges, then v edges.
+    // Drawn through the gamut, with a dark casing, so the whole outline shows.
+    const order = [0, 1, 2, 3, 1, 2, 3, 0];
+    const positions = order.flatMap((i) => corners[i].toArray());
+    const u = new Color().setStyle(PLANE_EDGE.u, "srgb");
+    const v = new Color().setStyle(PLANE_EDGE.v, "srgb");
+    const colors = [u, u, u, u, v, v, v, v].flatMap((c) => [c.r, c.g, c.b]);
+    const size = this.renderer.getSize(new Vector2());
+    this.lineMaterials = [];
+    for (const [width, colored, order] of [[5, false, 1], [2, true, 2]] as const) {
+      const geo = new LineSegmentsGeometry().setPositions(positions);
+      if (colored) geo.setColors(colors);
+      const mat = new LineMaterial({
+        linewidth: width,
+        vertexColors: colored,
+        color: colored ? 0xffffff : 0x000000,
+        transparent: true,
+        opacity: colored ? 1 : 0.6,
+        depthTest: false,
+      });
+      mat.resolution.copy(size);
+      this.lineMaterials.push(mat);
+      const line = new LineSegments2(geo, mat);
+      line.renderOrder = order;
+      this.planeGroup.add(line);
+    }
     const fill = new BufferGeometry().setFromPoints([corners[0], corners[1], corners[2], corners[0], corners[2], corners[3]]);
     this.planeGroup.add(
       new Mesh(
