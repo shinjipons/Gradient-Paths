@@ -1,3 +1,4 @@
+import { inject } from "@vercel/analytics";
 import { Object3D } from "three";
 import { clamp01, hexToRgb, oklabToSrgb, rgbToHex, srgbToOklab, type Vec3 } from "./color/convert";
 import { SPACES, spaceById } from "./color/spaces";
@@ -19,6 +20,13 @@ import { LineChart, type Series } from "./views/charts";
 import { makePlane, type Plane } from "./views/plane";
 import { SliceView } from "./views/slice2d";
 import { View3D } from "./views/view3d";
+
+// Vercel Web Analytics. Its route tracking only hooks pushState, and the app
+// writes its state with replaceState, so editing a gradient adds no page
+// views. The hash (the whole gradient state) is dropped from the reported URL.
+inject({
+  beforeSend: (event) => ({ ...event, url: event.url.split("#")[0] }),
+});
 
 // Z-up world. Must be set before any Object3D is constructed.
 Object3D.DEFAULT_UP.set(0, 0, 1);
