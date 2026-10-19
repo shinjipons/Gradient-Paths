@@ -9,8 +9,6 @@
   <body>
     <div class="app">
       <header class="topbar">
-        <h1 class="brand" title="Pick two colors, a space, and a route between them.">Gradient Paths</h1>
-
         <div class="group" role="group" aria-label="Colors">
           <label class="swatch-field">
             <span class="tag">A</span>
@@ -92,6 +90,7 @@
             </div>
           </div>
         </div>
+        <button id="copy-css" class="primary-btn" title="Copy the gradient's stops as a CSS background">Copy CSS</button>
       </header>
 
       <main class="main">
@@ -115,6 +114,11 @@
                   <button id="reset-cam" class="text-btn" title="Reset camera">⟲</button>
                 </div>
               </div>
+              <!-- Always open, pinned over the 3D view's bottom-right corner. -->
+              <section class="pinned-chart channels-panel" aria-label="Channels">
+                <h3>Channels <small id="channels-sub"></small></h3>
+                <div class="chart-host" id="chart-channels"></div>
+              </section>
               <div class="viewport" id="view3d">
                 <p class="viewport-hint">Right- or middle-drag to orbit · Shift to truck · Ctrl to dolly · wheel or pinch to zoom · <kbd>`</kbd> to fly</p>
               </div>
@@ -123,73 +127,41 @@
               <div class="view-head">
                 <h3>2D slice</h3>
                 <div class="toolbar">
-                  <div class="seg small" id="plane-seg"></div>
                   <button id="reset-slice" class="text-btn" title="Reset pan and zoom">⟲</button>
                 </div>
               </div>
-              <div class="plane-controls" id="plane-controls">
-                <label class="field inline" id="offset-field">
-                  <span>Position <output id="offset-out"></output></span>
-                  <input type="range" id="offset" min="-1" max="1" step="0.01" />
-                </label>
-                <label class="field inline" id="angle-field">
-                  <span>Angle <output id="angle-out"></output></span>
-                  <input type="range" id="angle" min="0" max="180" step="1" />
-                </label>
-                <button id="fit-plane" class="text-btn">Fit to path</button>
-              </div>
+              <!-- Always open, pinned over the slice's bottom-left corner. -->
+              <section class="pinned-chart speed-panel" aria-label="Perceptual speed">
+                <h3>Perceptual speed <small>ΔE OK per 1% — flat means even</small></h3>
+                <div class="chart-host" id="chart-speed"></div>
+              </section>
               <div class="viewport" id="slice">
                 <p class="viewport-hint">Drag empty space, or right- or middle-drag, to pan · wheel or pinch to zoom</p>
               </div>
             </div>
           </section>
-
-          <!-- Floating widgets over the two viewports; each collapses to its header. -->
-          <div class="overlay">
-            <section class="card widget chart" data-widget="channels">
-              <button class="widget-head" aria-expanded="true">
-                <h3>Channels <small id="channels-sub"></small></h3><span class="chev" aria-hidden="true"></span>
-              </button>
-              <div class="widget-body">
-                <div class="chart-host" id="chart-channels"></div>
-              </div>
-            </section>
-
-            <section class="card widget strips" data-widget="gradient">
-              <button class="widget-head" aria-expanded="true">
-                <h3>Gradient</h3><span class="chev" aria-hidden="true"></span>
-              </button>
-              <div class="widget-body">
-                <div class="strip-row">
-                  <span class="strip-label">This path</span>
-                  <div class="strip-wrap"><canvas id="strip"></canvas></div>
-                </div>
-                <div class="strip-row">
-                  <span class="strip-label" id="stops-label">Stops</span>
-                  <div class="stops" id="stop-swatches"></div>
-                </div>
-                <div class="strip-row">
-                  <span class="strip-label" id="native-label">Browser</span>
-                  <div class="strip-wrap"><div class="native" id="native"></div></div>
-                </div>
-                <div class="stats" id="stats"></div>
-                <div class="css-out">
-                  <code id="css"></code>
-                  <button id="copy" class="text-btn">Copy CSS</button>
-                </div>
-              </div>
-            </section>
-
-            <section class="card widget chart" data-widget="speed">
-              <button class="widget-head" aria-expanded="true">
-                <h3>Perceptual speed <small>ΔE OK per 1% — flat means even</small></h3><span class="chev" aria-hidden="true"></span>
-              </button>
-              <div class="widget-body">
-                <div class="chart-host" id="chart-speed"></div>
-              </div>
-            </section>
-          </div>
         </div>
+
+        <!-- The result: full width under both views. -->
+        <section class="gradient-bar" aria-label="Gradient">
+          <div class="gradient-strips">
+            <div class="strip-row">
+              <span class="strip-label">This path</span>
+              <div class="strip-wrap"><canvas id="strip"></canvas></div>
+            </div>
+            <div class="strip-row">
+              <span class="strip-label" id="stops-label">Stops</span>
+              <div class="stops" id="stop-swatches"></div>
+            </div>
+            <div class="strip-row">
+              <span class="strip-label" id="native-label">Browser</span>
+              <div class="strip-wrap"><div class="native" id="native"></div></div>
+            </div>
+          </div>
+          <div class="gradient-info">
+            <div class="stats" id="stats"></div>
+          </div>
+        </section>
       </main>
     </div>
     <script type="module" src="/src/main.ts"></script>

@@ -1,5 +1,5 @@
 import { Object3D } from "three";
-import { hexToRgb, rgbToHex, type Vec3 } from "./color/convert";
+import { clamp01, hexToRgb, oklabToSrgb, rgbToHex, srgbToOklab, type Vec3 } from "./color/convert";
 import { SPACES, spaceById } from "./color/spaces";
 import {
   MODES,
@@ -13,8 +13,8 @@ import {
   type PathMode,
   type Spacing,
 } from "./path/paths";
-import { add, dist, dot, scale } from "./path/vec";
-import { convertPoints, deserialize, serialize, type PlaneKind, type SolidStyle } from "./state";
+import { add, dist, scale } from "./path/vec";
+import { convertPoints, deserialize, serialize, type SolidStyle } from "./state";
 import { LineChart, type Series } from "./views/charts";
 import { makePlane, type Plane } from "./views/plane";
 import { SliceView } from "./views/slice2d";
@@ -97,11 +97,6 @@ seg<GamutMap>($("gamut-seg"), [
   { v: "clip", label: "Clip", title: "Clamp each RGB channel to 0–1" },
 ], (v) => { state.gamut = v; render(); });
 
-seg<PlaneKind>($("plane-seg"), [
-  { v: "path", label: "Path plane", title: "The plane the curve bends in" },
-  { v: "horizontal", label: "Horizontal" },
-  { v: "vertical", label: "Vertical" },
-], (v) => { state.plane.kind = v; fitPlane(); slice.resetView(); render(); });
 
 const bind = (id: string, apply: (v: number) => void) => {
   const el = $<HTMLInputElement>(id);
@@ -110,8 +105,6 @@ const bind = (id: string, apply: (v: number) => void) => {
 bind("bend", (v) => (state.arcBend = v));
 bind("roll", (v) => (state.arcRoll = v));
 bind("stops", (v) => (state.stops = v));
-bind("offset", (v) => (state.plane.offset = v));
-bind("angle", (v) => (state.plane.angle = v));
 bind("opacity", (v) => (state.opacity = v));
 $<HTMLSelectElement>("easing").onchange = (e) => { state.easing = (e.target as HTMLSelectElement).value as typeof state.easing; render(); };
 $<HTMLSelectElement>("solid").onchange = (e) => { state.solid = (e.target as HTMLSelectElement).value as SolidStyle; render(); };
@@ -135,12 +128,13 @@ $("add-point").onclick = () => {
   render();
 };
 
-$("fit-plane").onclick = () => { fitPlane(); render(); };
 
-$("copy").onclick = async () => {
-  const btn = $("copy");
+/** The gradient's stops as a CSS background, refreshed on every render. */
+let gradientCss = "";
+$("copy-css").onclick = async () => {
+  const btn = $("copy-css");
   try {
-    await navigator.clipboard.writeText($("css").textContent ?? "");
+    await navigator.clipboard.writeText(gradientCss);
     btn.textContent = "Copied";
   } catch {
     btn.textContent = "Copy failed";
@@ -165,33 +159,6 @@ document.addEventListener("pointerdown", (e) => {
 });
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") closePops();
-});
-
-// --- floating widgets ----------------------------------------------------------
-
-// Charts start folded so the first view is just the gradient; remembered per viewer.
-const WIDGET_DEFAULTS: Record<string, boolean> = { gradient: true, channels: false, speed: false };
-const WIDGET_KEY = "gradient-paths:widgets";
-const widgetOpen: Record<string, boolean> = { ...WIDGET_DEFAULTS };
-try {
-  Object.assign(widgetOpen, JSON.parse(localStorage.getItem(WIDGET_KEY) ?? "{}"));
-} catch {
-  /* storage unavailable: use defaults */
-}
-document.querySelectorAll<HTMLElement>(".widget").forEach((w) => {
-  const id = w.dataset.widget!;
-  const head = w.querySelector<HTMLButtonElement>(".widget-head")!;
-  head.setAttribute("aria-expanded", String(widgetOpen[id] ?? true));
-  head.onclick = () => {
-    widgetOpen[id] = head.getAttribute("aria-expanded") !== "true";
-    head.setAttribute("aria-expanded", String(widgetOpen[id]));
-    try {
-      localStorage.setItem(WIDGET_KEY, JSON.stringify(widgetOpen));
-    } catch {
-      /* ignore */
-    }
-    render({ keepPlane: true }); // canvases sized while hidden need a redraw
-  };
 });
 
 // --- views -------------------------------------------------------------------
@@ -231,37 +198,32 @@ const slice = new SliceView($("slice"), {
   },
 });
 
-// Keep the slice plot clear of the floating UI: its header and plane controls
-// above, and the widget title bars below. Only the title bars count, so that
-// opening or closing a widget never resizes the plot; open widgets float over it.
+// Keep the slice plot clear of the floating UI: its header and hint above,
+// the speed chart below.
 const updateSliceInset = () => {
   const box = $("slice").getBoundingClientRect();
   let top = 0;
   const view = $("slice").closest(".view")!;
-  for (const el of [view.querySelector(".view-head")!, view.querySelector(".viewport-hint")!, $("plane-controls")]) {
+  for (const el of [view.querySelector(".view-head")!, view.querySelector(".viewport-hint")!]) {
     const r = el.getBoundingClientRect();
     if (r.height > 0) top = Math.max(top, r.bottom - box.top + 8);
   }
+  // The speed chart is always open, so reserving all of it never resizes the plot.
   let bottom = 0;
-  const overlay = document.querySelector<HTMLElement>(".overlay")!;
-  if (getComputedStyle(overlay).position === "absolute") {
-    const gap = box.bottom - overlay.getBoundingClientRect().bottom;
-    overlay.querySelectorAll<HTMLElement>(".widget").forEach((w) => {
-      const r = w.getBoundingClientRect();
-      const head = w.querySelector(".widget-head")!.getBoundingClientRect().height;
-      if (r.right > box.left && r.left < box.right) bottom = Math.max(bottom, gap + head + 8);
-    });
+  const speed = view.querySelector<HTMLElement>(".speed-panel")!;
+  if (getComputedStyle(speed).position === "absolute") {
+    bottom = box.bottom - speed.getBoundingClientRect().top + 8;
   }
   slice.setInsets(Math.max(0, top), Math.max(0, bottom));
 };
 const insetObserver = new ResizeObserver(updateSliceInset);
-insetObserver.observe(document.querySelector(".overlay")!);
 insetObserver.observe($("slice"));
-insetObserver.observe($("plane-controls"));
+insetObserver.observe(document.querySelector(".speed-panel")!);
 
 $("reset-slice").onclick = () => slice.resetView();
 
-const chartChannels = new LineChart($("chart-channels"));
+// Its direct labels are short channel names ("OK L" at most), so a narrow gutter fits.
+const chartChannels = new LineChart($("chart-channels"), 36);
 const chartSpeed = new LineChart($("chart-speed"));
 
 // --- render ------------------------------------------------------------------
@@ -269,23 +231,6 @@ const chartSpeed = new LineChart($("chart-speed"));
 let currentPlane: Plane | undefined;
 let lastDense: Vec3[] = [];
 
-function fitPlane() {
-  const A = space.embed(space.fromRGB(state.a));
-  const B = space.embed(space.fromRGB(state.b));
-  if (state.plane.kind === "horizontal") {
-    const zs = lastDense.length ? lastDense.map((p) => p[2]) : [A[2], B[2]];
-    state.plane.offset = round2(zs.reduce((s, z) => s + z, 0) / zs.length);
-  } else if (state.plane.kind === "vertical") {
-    const dx = B[0] - A[0];
-    const dy = B[1] - A[1];
-    let ang = Math.hypot(dx, dy) > 1e-3 ? (Math.atan2(dy, dx) * 180) / Math.PI : 45;
-    ang = ((ang % 180) + 180) % 180;
-    const r = (ang * Math.PI) / 180;
-    state.plane.angle = Math.round(ang);
-    state.plane.offset = round2(dot([Math.sin(r), -Math.cos(r), 0], A));
-  }
-}
-const round2 = (x: number) => Math.round(Math.max(-1, Math.min(1, x)) * 100) / 100;
 
 let raf = 0;
 function scheduleRender() {
@@ -304,7 +249,7 @@ function render(opts: { keepPlane?: boolean } = {}) {
   const path = buildPath(space, state.a, state.b, { ...state, points: used });
   const grad = computeGradient(space, path, state);
   lastDense = grad.dense.map((d) => d.embed);
-  const plane = lockedPlane ?? makePlane(state.plane.kind, state.plane.offset, state.plane.angle, space, A, B, lastDense, currentPlane);
+  const plane = lockedPlane ?? makePlane(space, A, B, lastDense, currentPlane);
   currentPlane = plane;
   const aHex = rgbToHex(state.a);
   const bHex = rgbToHex(state.b);
@@ -333,12 +278,6 @@ function render(opts: { keepPlane?: boolean } = {}) {
   segSet($("spacing-seg"), state.spacing);
   $<HTMLSelectElement>("easing").value = state.easing;
   segSet($("gamut-seg"), state.gamut);
-  segSet($("plane-seg"), state.plane.kind);
-  $("offset-field").hidden = state.plane.kind === "path";
-  $("angle-field").hidden = state.plane.kind !== "vertical";
-  $("fit-plane").hidden = state.plane.kind === "path";
-  setRange("offset", state.plane.offset, state.plane.offset.toFixed(2));
-  setRange("angle", state.plane.angle, `${Math.round(state.plane.angle)}°`);
   $<HTMLSelectElement>("solid").value = state.solid;
   setRange("opacity", state.opacity, "");
   $<HTMLInputElement>("opacity").hidden = state.solid !== "surface";
@@ -391,6 +330,10 @@ function render(opts: { keepPlane?: boolean } = {}) {
     d.style.background = st.hex;
     d.title = `${st.hex}${st.inGamut ? "" : " (mapped from outside sRGB)"} — click to copy`;
     if (!st.inGamut) d.className = "oog-stop";
+    const label = document.createElement("span");
+    label.textContent = st.hex.slice(1).toUpperCase();
+    label.style.color = labelInk(st.display);
+    d.append(label);
     d.onclick = () => navigator.clipboard?.writeText(st.hex).catch(() => {});
     $("stop-swatches").append(d);
   }
@@ -409,7 +352,12 @@ function render(opts: { keepPlane?: boolean } = {}) {
     native.title = `${space.label} has no CSS interpolation space`;
   }
 
-  // Stats + CSS.
+  const n = grad.stops.length;
+  gradientCss = `background: linear-gradient(90deg, ${grad.stops
+    .map((s, i) => `${s.hex} ${+((i / (n - 1)) * 100).toFixed(2)}%`)
+    .join(", ")});`;
+
+  // Stats.
   const K = 201;
   const along = Array.from({ length: K }, (_, i) => grad.at(i / (K - 1)));
   const speed = along.slice(1).map((s, i) => dist(s.oklab, along[i].oklab) * 100 / (100 / (K - 1)));
@@ -422,10 +370,6 @@ function render(opts: { keepPlane?: boolean } = {}) {
     `Speed range <b>${minS.toFixed(2)}–${maxS.toFixed(2)}</b>`,
     `Outside sRGB <b>${Math.round(grad.outOfGamut * 100)}%</b>`,
   ].map((s) => `<span>${s}</span>`).join("");
-  const n = grad.stops.length;
-  $("css").textContent = `background: linear-gradient(90deg, ${grad.stops
-    .map((s, i) => `${s.hex} ${+((i / (n - 1)) * 100).toFixed(2)}%`)
-    .join(", ")});`;
 
   // 3D + slice.
   const showPolygon = state.mode === "quadratic" || state.mode === "cubic" || state.mode === "spline";
@@ -497,6 +441,16 @@ function formatNative(n: Vec3): string {
   return space.channels.map((ch, i) => `${ch.name} ${fmtChannel(n[i], ch)}`).join("  ");
 }
 
+/**
+ * Text color for a label on a swatch: the swatch's own hue, pushed dark on
+ * light swatches and light on dark ones, like a palette card.
+ */
+function labelInk(rgb: Vec3): string {
+  const [L, a, b] = srgbToOklab(rgb);
+  const ink: Vec3 = L > 0.68 ? [0.32, a * 0.9, b * 0.9] : [0.96, a * 0.25, b * 0.25];
+  return rgbToHex(oklabToSrgb(ink).map(clamp01) as Vec3);
+}
+
 function niceMax(x: number): number {
   if (!(x > 0)) return 1;
   const p = 10 ** Math.floor(Math.log10(x));
@@ -518,5 +472,4 @@ window.addEventListener("hashchange", () => {
   space = spaceById(state.space);
   render();
 });
-if (state.plane.kind !== "path") fitPlane();
 render();

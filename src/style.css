@@ -29,7 +29,6 @@ body { margin: 0; background: var(--bg); }
   display: flex; align-items: center; gap: 10px 12px; flex-wrap: wrap;
   padding: 10px 16px; background: var(--surface-1); border-bottom: 1px solid var(--border);
 }
-.brand { font-size: 15px; margin: 0; letter-spacing: -0.01em; white-space: nowrap; cursor: default; }
 .group { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .group + .group { padding-left: 12px; border-left: 1px solid var(--border); }
 .group-label { color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; font-weight: 600; }
@@ -40,6 +39,16 @@ body { margin: 0; background: var(--bg); }
 .hint code { color: var(--text-secondary); }
 
 /* Popovers: a button that opens a floating panel of secondary controls. */
+/* The bar's one primary action, pushed to its right end. */
+.primary-btn {
+  margin-left: auto; padding: 5px 12px; border: 1px solid var(--accent); border-radius: 6px;
+  background: var(--accent); color: #fff; font: inherit; font-size: 12px; font-weight: 600;
+  cursor: pointer; white-space: nowrap;
+}
+.primary-btn:hover { background: #4b95ec; border-color: #4b95ec; }
+.primary-btn:active { background: #2f78d0; border-color: #2f78d0; }
+.primary-btn:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+
 .pop { position: relative; }
 .pop-btn {
   background: var(--surface-2); color: var(--text-primary); border: 1px solid var(--border);
@@ -121,36 +130,45 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
 
 /* --- main ------------------------------------------------------------- */
 
-.main { flex: 1; min-height: 0; padding: 0; min-width: 0; }
+.main { flex: 1; min-height: 0; padding: 0; min-width: 0; display: flex; flex-direction: column; }
 .card { background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; min-width: 0; }
 .card h3 { margin: 0; font-size: 13px; font-weight: 600; }
 .card h3 small { color: var(--text-muted); font-weight: 400; margin-left: 6px; }
 
-.strips .widget-body { display: grid; gap: 8px; }
+/* The result: a full-width band under both views, strips left, a narrow stack of numbers right. */
+.gradient-bar {
+  flex: none; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px 20px;
+  align-items: start; padding: 12px 16px; background: var(--surface-1); border-top: 1px solid var(--border);
+}
+.gradient-strips, .gradient-info { display: grid; gap: 8px; min-width: 0; }
+.gradient-strips { gap: 3px; }
 .strip-row { display: grid; grid-template-columns: 70px 1fr; gap: 10px; align-items: center; }
 .strip-label { color: var(--text-muted); font-size: 12px; }
 .strip-wrap { position: relative; height: 40px; border-radius: 6px; overflow: hidden; }
 .strip-row:nth-child(3) .strip-wrap { height: 20px; }
 #strip, .native { width: 100%; height: 100%; display: block; }
-.stops { display: flex; gap: 2px; height: 22px; }
-.stops div { flex: 1; border-radius: 4px; position: relative; cursor: pointer; }
+.stops { display: flex; gap: 2px; height: 30px; }
+.stops div {
+  flex: 1; min-width: 0; border-radius: 4px; position: relative; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; padding: 0 8px; container-type: inline-size;
+}
+.stops div span {
+  font: 600 11px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.02em;
+  white-space: nowrap; pointer-events: none;
+}
+/* Too narrow for six characters (many stops): show color only. */
+@container (max-width: 44px) { .stops div span { display: none; } }
 .stops div.oog-stop::after {
   content: ""; position: absolute; inset: auto 0 0 0; height: 5px;
   background: repeating-linear-gradient(45deg, #fff 0 2px, transparent 2px 4px); border-radius: 0 0 4px 4px; opacity: .8;
 }
 .stops div:hover { outline: 2px solid #fff; outline-offset: 1px; }
-.stats { display: flex; flex-wrap: wrap; gap: 6px 18px; color: var(--text-muted); font-size: 12px; padding-top: 2px; }
+.stats { display: flex; flex-direction: column; gap: 4px; color: var(--text-muted); font-size: 12px; white-space: nowrap; }
 .stats b { color: var(--text-primary); font-weight: 600; font-variant-numeric: tabular-nums; }
-.css-out { display: flex; gap: 8px; align-items: flex-start; }
-.css-out code {
-  flex: 1; min-width: 0; font: 11px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
-  color: var(--text-secondary); background: var(--bg); border: 1px solid var(--border);
-  border-radius: 6px; padding: 5px 8px; max-height: 44px; overflow: auto; word-break: break-all;
-}
 
 /* The two viewports are the main stage: full bleed, side by side, split by a
-   hairline. Their headers and the analysis widgets float over them. */
-.stage { position: relative; height: 100%; min-height: 480px; }
+   hairline. Their headers and charts float over them. */
+.stage { position: relative; flex: 1; min-height: 360px; }
 .views { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); height: 100%; }
 .card.view {
   position: relative; display: flex; flex-direction: column; min-height: 0;
@@ -177,47 +195,25 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
 }
 #slice .viewport-hint { right: auto; max-width: calc(50% - 24px); }
 kbd { font: 11px ui-monospace, monospace; border: 1px solid var(--border); border-radius: 3px; padding: 0 4px; }
-.plane-controls {
-  position: absolute; top: 46px; right: 12px; z-index: 3; width: min(340px, calc(100% - 24px));
-  display: flex; gap: 12px; align-items: end; flex-wrap: wrap; padding: 8px 10px;
-  background: rgba(26, 26, 25, 0.84); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
-  border: 1px solid rgba(255, 255, 255, 0.09); border-radius: var(--radius);
-}
-.plane-controls:not(:has(> :not([hidden]))) { display: none; }
-.field.inline { margin: 0; flex: 1 1 140px; }
 
 .flythrough-hud {
   position: absolute; left: 10px; bottom: 10px; background: rgba(0,0,0,.7);
   color: #fff; padding: 6px 10px; border-radius: 6px; font-size: 11px; pointer-events: none;
 }
 
-/* --- floating widgets ---------------------------------------------------- */
+/* --- pinned charts ------------------------------------------------------ */
 
-.overlay {
-  position: absolute; left: 12px; right: 12px; bottom: 12px; z-index: 2;
-  display: flex; gap: 10px; align-items: flex-end; pointer-events: none;
+/* Always-open charts pinned in a viewport corner, with no chrome of their own:
+   speed bottom-left of the 2D slice, channels bottom-right of the 3D view. */
+.pinned-chart {
+  position: absolute; bottom: 12px; z-index: 3; width: min(380px, calc(100% - 24px));
+  display: flex; flex-direction: column; gap: 6px; background: transparent; border: 0;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
 }
-.widget {
-  pointer-events: auto; flex: 1 1 0; min-width: 0; padding: 0;
-  background: rgba(26, 26, 25, 0.84); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
-  border-color: rgba(255, 255, 255, 0.09); box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
-}
-.widget.strips { flex-grow: 1.5; }
-.widget-head {
-  all: unset; box-sizing: border-box; width: 100%; display: flex; align-items: center;
-  justify-content: space-between; gap: 8px; padding: 9px 12px; cursor: pointer;
-}
-.widget-head:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: var(--radius); }
-.widget-head h3 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.chev {
-  flex: none; width: 7px; height: 7px; margin-right: 2px; border: solid var(--text-muted);
-  border-width: 0 1.5px 1.5px 0; transform: rotate(45deg) translateY(-2px); transition: transform .15s;
-}
-.widget-head[aria-expanded="false"] .chev { transform: rotate(-135deg) translateX(-2px); }
-.widget-head:hover .chev { border-color: var(--text-primary); }
-.widget-body { padding: 0 12px 12px; }
-.widget-head[aria-expanded="false"] + .widget-body { display: none; }
-.chart .widget-body { display: flex; flex-direction: column; gap: 6px; }
+.speed-panel { left: 12px; }
+.channels-panel { right: 12px; }
+.pinned-chart h3 { margin: 0; font-size: 13px; font-weight: 600; }
+.pinned-chart h3 small { color: var(--text-secondary); font-weight: 400; margin-left: 6px; }
 .chart-host { display: flex; flex-direction: column; gap: 4px; }
 .chart-legend { display: flex; gap: 12px; flex-wrap: wrap; color: var(--text-secondary); font-size: 11px; min-height: 14px; }
 .chart-legend .lg { display: inline-flex; align-items: center; gap: 5px; }
@@ -235,16 +231,13 @@ kbd { font: 11px ui-monospace, monospace; border: 1px solid var(--border); borde
 .chart-tip i { width: 8px; height: 8px; border-radius: 50%; }
 .chart-tip b { margin-left: auto; padding-left: 10px; color: var(--text-primary); font-weight: 600; font-variant-numeric: tabular-nums; }
 
-/* Not enough room for three across: charts share a row above the gradient. */
-@media (max-width: 1250px) {
-  .overlay { flex-wrap: wrap; }
-  .widget.chart { flex-basis: calc(50% - 5px); }
-  .widget.strips { order: 1; flex-basis: 100%; }
+@media (max-width: 1000px) {
+  .gradient-bar { grid-template-columns: minmax(0, 1fr); }
+  .stats { flex-direction: row; flex-wrap: wrap; gap: 6px 18px; }
 }
 @media (max-width: 760px) {
   .app { height: auto; }
   .topbar { gap: 10px; }
-  .brand { width: 100%; }
   .group { flex-wrap: wrap; }
   .group + .group { padding-left: 0; border-left: 0; }
   .topbar .seg { flex-wrap: wrap; }
@@ -254,7 +247,7 @@ kbd { font: 11px ui-monospace, monospace; border: 1px solid var(--border); borde
   .views { grid-template-columns: minmax(0, 1fr); height: auto; }
   .card.view + .card.view { border-left: 0; border-top: 1px solid var(--border); }
   .viewport { flex: none; height: 340px; }
-  .overlay { position: static; flex-direction: column; align-items: stretch; padding: 12px; }
-  .widget.chart, .widget.strips { flex-basis: auto; }
+  .viewport-hint { display: none; } /* mouse hints; the wrapped toolbar covers them */
+  .pinned-chart { position: static; order: 1; width: auto; padding: 12px; }
   .strip-row { grid-template-columns: 1fr; gap: 4px; }
 }

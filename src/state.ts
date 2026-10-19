@@ -2,7 +2,6 @@ import { hexToRgb, rgbToHex, type Vec3 } from "./color/convert";
 import { spaceById, type ColorSpace } from "./color/spaces";
 import type { Easing, GamutMap, HueMode, PathMode, Spacing } from "./path/paths";
 
-export type PlaneKind = "horizontal" | "vertical" | "path";
 export type SolidStyle = "surface" | "points" | "wire" | "none";
 
 export interface AppState {
@@ -19,7 +18,6 @@ export interface AppState {
   spacing: Spacing;
   easing: Easing;
   gamut: GamutMap;
-  plane: { kind: PlaneKind; offset: number; angle: number };
   solid: SolidStyle;
   opacity: number;
 }
@@ -37,7 +35,6 @@ export const DEFAULT_STATE: AppState = {
   spacing: "parameter",
   easing: "linear",
   gamut: "chroma",
-  plane: { kind: "path", offset: 0, angle: 45 },
   solid: "surface",
   opacity: 0.35,
 };

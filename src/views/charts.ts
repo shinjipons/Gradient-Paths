@@ -34,7 +34,11 @@ export class LineChart {
   private input: ChartInput | null = null;
   private hoverX: number | null = null;
 
-  constructor(private host: HTMLElement) {
+  /** `padRight` is the gutter for the direct labels at the right end of each line. */
+  constructor(
+    private host: HTMLElement,
+    private padRight = PAD.r,
+  ) {
     this.legend.className = "chart-legend";
     this.tip.className = "chart-tip";
     this.tip.hidden = true;
@@ -88,7 +92,7 @@ export class LineChart {
     const surface = css.getPropertyValue("--surface-1").trim() || "#1a1a19";
 
     const x0 = PAD.l;
-    const x1 = w - PAD.r;
+    const x1 = w - this.padRight;
     const y0 = PAD.t;
     const y1 = h - PAD.b - BAND - 4;
     const X = (u: number) => x0 + u * (x1 - x0);
