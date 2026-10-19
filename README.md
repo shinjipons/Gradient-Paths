@@ -1,11 +1,12 @@
 # Gradient Paths
 
-Explore how a gradient between two colors changes with the color space it travels through and the shape of the route it takes.
+**[Open the live app →](https://gradient-paths.vercel.app)**
 
-```bash
-npm install
-npm run dev
-```
+An interactive gradient generator that treats a gradient as a path through color space. Pick two colors, pick a space (OKLab, OKLCH, CIELAB, LCh, HSL, HSV or sRGB), then bend the route between them with arcs, Bézier curves or splines. Space the stops evenly by perceived difference and copy the CSS.
+
+[![A gradient from midnight indigo to cream drawn as a spline through the OKLab color solid](public/og-image.png)](https://gradient-paths.vercel.app/#a=120b2e&b=fff1c4&s=oklab&m=spline&h=shorter&p=0.344,-0.293,-0.126;0.498,0.082,0.265;0.227,0.278,0.558&ab=0.35&ar=0&n=9&sp=perceptual&e=linear&g=chroma)
+
+*Above: "Night to sunrise", a smooth OKLab spline through plum, magenta and coral, with perceptually even stops. A plain two-stop gradient between the same colors goes through a dull mauve. [Open it](https://gradient-paths.vercel.app/#a=120b2e&b=fff1c4&s=oklab&m=spline&h=shorter&p=0.344,-0.293,-0.126;0.498,0.082,0.265;0.227,0.278,0.558&ab=0.35&ar=0&n=9&sp=perceptual&e=linear&g=chroma).*
 
 ## What's in it
 
@@ -20,13 +21,24 @@ npm run dev
   - a centripetal Catmull–Rom spline
 - **Sampling:** stops can be spaced by the curve parameter, by distance in the space, or by perceptual distance (OKLab ΔE). Easing goes on top. Colors outside sRGB are shown either clipped or with their chroma reduced.
 - **Views:**
-  - 3D: the sRGB gamut as a surface, point cloud or wireframe, with the path through it
-  - 2D slice: horizontal, vertical, or the plane the path bends in, with draggable handles
+  - 3D: the sRGB gamut as a surface, point cloud or wireframe, with the path through it, in orthographic projection
+  - 2D slice: the plane the path bends in, with draggable handles
   - channel and perceptual-speed charts
   - a CSS output, and the browser's own interpolation next to it for comparison
 
 The URL hash holds the current state, so you can share a link to it.
 
-## 3D navigation
+## Navigation
 
-Right- or middle-drag to orbit. Add Shift to truck, or Ctrl to dolly. Use the wheel or a pinch to zoom toward the cursor, and a two-finger drag to orbit. Press <kbd>`</kbd> to fly with WASD. The left button never moves the camera.
+**3D view.** Right- or middle-drag to orbit. Add Shift to truck, or Ctrl to dolly. Use the wheel or a pinch to zoom toward the cursor, and a two-finger drag to orbit. The left button never moves the camera: click a handle to select it, then drag the gizmo's arrows. The axis widget in the top-right corner snaps to a view along any axis when you click one of its ends, and orbits when you drag it.
+
+**2D slice.** Drag a handle to move it; hold Shift to lock the move horizontally or vertically. Drag empty space, or right- or middle-drag, to pan. Use the wheel or a pinch to zoom.
+
+## Development
+
+```bash
+npm install
+npm run dev
+```
+
+Built with TypeScript, [three.js](https://threejs.org) and [Vite](https://vitejs.dev).
