@@ -402,7 +402,25 @@ export class View3D {
     if (!this.gizmo.dragging) this.followSelected();
     const pts = inp.dense.map((d) => v3(d.embed));
     // Collapse duplicates so the tube's Frenet frames stay finite.
-    const uniq = pts.filter((p, i) => i === 0 || p.distanceTo(pts[i - 1]) > 1e-5);
+    const keep = pts.map((p, i) => i === 0 || p.distanceTo(pts[i - 1]) > 1e-5);
+    const uniq = pts.filter((_, i) => keep[i]);
+    const uniqIdx = pts.flatMap((_, i) => (keep[i] ? [i] : []));
+    // The tube is parameterized by arc length, the samples by t; where the path's speed varies
+    // (spirals, easing) the two disagree, so colors are looked up by distance along the curve.
+    const cum = [0];
+    for (let i = 1; i < uniq.length; i++) cum.push(cum[i - 1] + uniq[i].distanceTo(uniq[i - 1]));
+    const total = cum[cum.length - 1] || 1;
+    const denseAtArc = (u: number) => {
+      const target = u * total;
+      let lo = 0;
+      let hi = cum.length - 1;
+      while (hi - lo > 1) {
+        const m = (lo + hi) >> 1;
+        if (cum[m] < target) lo = m;
+        else hi = m;
+      }
+      return inp.dense[uniqIdx[target - cum[lo] < cum[hi] - target ? lo : hi]];
+    };
     if (uniq.length >= 2) {
       const curve = new CatmullRomCurve3(uniq, false, "catmullrom", 0);
       const segs = 300;
@@ -411,7 +429,7 @@ export class View3D {
       const colors = new Float32Array(tube.attributes.position.count * 3);
       const c = new Color();
       for (let i = 0; i <= segs; i++) {
-        const s = inp.dense[Math.round((i / segs) * (inp.dense.length - 1))];
+        const s = denseAtArc(i / segs);
         c.setRGB(s.display[0], s.display[1], s.display[2], "srgb");
         for (let j = 0; j <= radial; j++) {
           const k = (i * (radial + 1) + j) * 3;

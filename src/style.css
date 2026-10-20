@@ -45,6 +45,9 @@ body { margin: 0; background: var(--bg); }
   .topbar-controls { grid-column: 2; display: flex; align-items: center; gap: 12px; }
   .topbar .primary-btn { grid-column: 3; justify-self: end; }
 }
+.history-group { gap: 2px; }
+.history-group .text-btn { display: inline-flex; align-items: center; padding: 5px 7px; }
+.history-group .text-btn:disabled { opacity: .35; cursor: default; }
 .topbar select { width: auto; padding: 4px 6px; font-size: 12px; }
 .topbar .seg { flex-wrap: nowrap; }
 .topbar .swatch-field { width: 104px; }
@@ -205,7 +208,8 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
 .toolbar { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }
 .toolbar select { width: auto; padding: 4px 6px; font-size: 12px; }
 .toolbar input[type="range"] { width: 70px; }
-.view-head.has-gizmo { right: 116px; }
+/* The 3D toolbar is centered across the viewport; the axis gizmo owns the top-right corner. */
+.view-head.has-gizmo .toolbar { position: absolute; left: 50%; transform: translateX(-50%); }
 .viewport { position: relative; flex: 1; min-height: 0; overflow: hidden; }
 .view3d-canvas { display: block; outline: none; }
 /* Viewport's top-right corner; the 3D toolbar sits to its left. */

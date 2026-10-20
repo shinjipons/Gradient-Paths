@@ -177,25 +177,70 @@ export class SliceView {
     const [s0, t0] = this.toPlane(pl, 0, 0);
     const [sx, tx] = this.toPlane(pl, 1, 0);
     const [sy, ty] = this.toPlane(pl, 0, 1);
+    // Color of the slice at fractional pixel (fi, fj); `inside` is false off the gamut.
+    const out: [number, number, number] = [0, 0, 0];
+    const sample = (fi: number, fj: number): boolean => {
+      const x = (fi / cols) * w;
+      const y = (fj / rows) * h;
+      const s = s0 + (sx - s0) * x + (sy - s0) * y;
+      const t = t0 + (tx - t0) * x + (ty - t0) * y;
+      const native = space.unembed(unproject(pl, s, t));
+      const rgb = space.toRGB(native);
+      if (!(rgb.every(Number.isFinite) && isRealColor(space, native, rgb))) return false;
+      out[0] = clamp01(rgb[0]) * 255;
+      out[1] = clamp01(rgb[1]) * 255;
+      out[2] = clamp01(rgb[2]) * 255;
+      return true;
+    };
+    const hatchAt = (i: number, j: number) => (((i + j) >> 2) % 2 === 0 ? 34 : 28);
+
+    // Pass 1: one sample per pixel at its center.
+    const inside = new Uint8Array(cols * rows);
     for (let j = 0; j < rows; j++) {
       for (let i = 0; i < cols; i++) {
-        const x = ((i + 0.5) / cols) * w;
-        const y = ((j + 0.5) / rows) * h;
-        const s = s0 + (sx - s0) * x + (sy - s0) * y;
-        const t = t0 + (tx - t0) * x + (ty - t0) * y;
-        const native = space.unembed(unproject(pl, s, t));
-        const rgb = space.toRGB(native);
-        const k = (j * cols + i) * 4;
-        if (rgb.every(Number.isFinite) && isRealColor(space, native, rgb)) {
-          img.data[k] = clamp01(rgb[0]) * 255;
-          img.data[k + 1] = clamp01(rgb[1]) * 255;
-          img.data[k + 2] = clamp01(rgb[2]) * 255;
-          img.data[k + 3] = 255;
+        const k = j * cols + i;
+        const ok = sample(i + 0.5, j + 0.5);
+        inside[k] = ok ? 1 : 0;
+        const d = k * 4;
+        if (ok) {
+          img.data[d] = out[0];
+          img.data[d + 1] = out[1];
+          img.data[d + 2] = out[2];
         } else {
-          const hatch = ((i + j) >> 2) % 2 === 0;
-          img.data[k] = img.data[k + 1] = img.data[k + 2] = hatch ? 34 : 28;
-          img.data[k + 3] = 255;
+          img.data[d] = img.data[d + 1] = img.data[d + 2] = hatchAt(i, j);
         }
+        img.data[d + 3] = 255;
+      }
+    }
+
+    // Pass 2: pixels on the gamut's edge are supersampled, so the boundary gets
+    // partial coverage instead of a staircase.
+    const N = 4;
+    for (let j = 0; j < rows; j++) {
+      for (let i = 0; i < cols; i++) {
+        const k = j * cols + i;
+        const v = inside[k];
+        const edge =
+          (i > 0 && inside[k - 1] !== v) ||
+          (i < cols - 1 && inside[k + 1] !== v) ||
+          (j > 0 && inside[k - cols] !== v) ||
+          (j < rows - 1 && inside[k + cols] !== v);
+        if (!edge) continue;
+        let r = 0, gr = 0, b = 0;
+        const hatch = hatchAt(i, j);
+        for (let m = 0; m < N; m++) {
+          for (let n = 0; n < N; n++) {
+            if (sample(i + (n + 0.5) / N, j + (m + 0.5) / N)) {
+              r += out[0]; gr += out[1]; b += out[2];
+            } else {
+              r += hatch; gr += hatch; b += hatch;
+            }
+          }
+        }
+        const d = k * 4;
+        img.data[d] = r / (N * N);
+        img.data[d + 1] = gr / (N * N);
+        img.data[d + 2] = b / (N * N);
       }
     }
     g.putImageData(img, 0, 0);
