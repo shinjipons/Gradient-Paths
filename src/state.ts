@@ -31,12 +31,12 @@ export const DEFAULT_STATE: AppState = {
   points: [],
   arcBend: 0.35,
   arcRoll: 0,
-  stops: 9,
+  stops: 11,
   spacing: "parameter",
   easing: "linear",
   gamut: "chroma",
   solid: "surface",
-  opacity: 0.35,
+  opacity: 0.5,
 };
 
 /** Re-express control points when the space changes, via (unclamped) sRGB. */

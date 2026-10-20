@@ -113,7 +113,6 @@ const bind = (id: string, apply: (v: number) => void) => {
 bind("bend", (v) => (state.arcBend = v));
 bind("roll", (v) => (state.arcRoll = v));
 bind("stops", (v) => (state.stops = v));
-bind("opacity", (v) => (state.opacity = v));
 $<HTMLSelectElement>("easing").onchange = (e) => { state.easing = (e.target as HTMLSelectElement).value as typeof state.easing; render(); };
 $<HTMLSelectElement>("solid").onchange = (e) => { state.solid = (e.target as HTMLSelectElement).value as SolidStyle; render(); };
 
@@ -278,8 +277,6 @@ function render(opts: { keepPlane?: boolean } = {}) {
   $<HTMLSelectElement>("easing").value = state.easing;
   segSet($("gamut-seg"), state.gamut);
   $<HTMLSelectElement>("solid").value = state.solid;
-  setRange("opacity", state.opacity, "");
-  $<HTMLInputElement>("opacity").hidden = state.solid !== "surface";
 
   // Control point list.
   $("points-field").hidden = info.points === 0;
