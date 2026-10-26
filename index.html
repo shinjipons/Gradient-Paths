@@ -68,6 +68,10 @@
     <noscript>Gradient Paths needs JavaScript and WebGL to draw the color spaces.</noscript>
     <div class="app">
       <header class="topbar">
+        <div class="group history-group" role="group" aria-label="History">
+          <button id="undo" class="text-btn" title="Undo (Ctrl/⌘ Z)" aria-label="Undo" disabled><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11"/></svg></button>
+          <button id="redo" class="text-btn" title="Redo (Shift Ctrl/⌘ Z)" aria-label="Redo" disabled><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5A5.5 5.5 0 0 0 4 14.5A5.5 5.5 0 0 0 9.5 20H13"/></svg></button>
+        </div>
         <div class="topbar-controls">
           <div class="group" role="group" aria-label="Colors">
             <div class="endpoint">
@@ -124,7 +128,7 @@
         <div class="stage">
           <section class="views">
             <div class="card view">
-              <div class="view-head">
+              <div class="view-head has-gizmo">
                 <select id="space" aria-label="Color space"></select>
                 <div class="toolbar">
                   <select id="solid" title="Gamut display">

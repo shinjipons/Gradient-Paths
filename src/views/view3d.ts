@@ -217,13 +217,18 @@ export class View3D {
     this.renderer.render(this.overlay, this.rig.camera);
   };
 
-  /** Scale every label so its text keeps a fixed pixel height on screen. */
+  /** Keep labels, dots and their lifts at a fixed size on screen. */
   private sizeLabels() {
     const cssH = this.renderer.domElement.clientHeight || 1;
     const fit = (o: Object3D) => {
+      const wpp = this.rig.worldPerPixel(cssH);
+      const dot = o.userData.dotPx as number | undefined;
+      if (dot !== undefined) o.scale.setScalar(dot * wpp); // unit-radius geometry
+      const lift = o.userData.liftPx as number | undefined;
+      if (lift !== undefined) o.position.copy(o.userData.base).z += lift * wpp;
       const px = o.userData.labelPx as number | undefined;
       if (px === undefined) return;
-      const h = px * this.rig.worldPerPixel(cssH);
+      const h = px * wpp;
       o.scale.set(h * o.userData.labelAspect, h, 1);
     };
     this.scene.traverse(fit);
@@ -397,7 +402,25 @@ export class View3D {
     if (!this.gizmo.dragging) this.followSelected();
     const pts = inp.dense.map((d) => v3(d.embed));
     // Collapse duplicates so the tube's Frenet frames stay finite.
-    const uniq = pts.filter((p, i) => i === 0 || p.distanceTo(pts[i - 1]) > 1e-5);
+    const keep = pts.map((p, i) => i === 0 || p.distanceTo(pts[i - 1]) > 1e-5);
+    const uniq = pts.filter((_, i) => keep[i]);
+    const uniqIdx = pts.flatMap((_, i) => (keep[i] ? [i] : []));
+    // The tube is parameterized by arc length, the samples by t; where the path's speed varies
+    // (spirals, easing) the two disagree, so colors are looked up by distance along the curve.
+    const cum = [0];
+    for (let i = 1; i < uniq.length; i++) cum.push(cum[i - 1] + uniq[i].distanceTo(uniq[i - 1]));
+    const total = cum[cum.length - 1] || 1;
+    const denseAtArc = (u: number) => {
+      const target = u * total;
+      let lo = 0;
+      let hi = cum.length - 1;
+      while (hi - lo > 1) {
+        const m = (lo + hi) >> 1;
+        if (cum[m] < target) lo = m;
+        else hi = m;
+      }
+      return inp.dense[uniqIdx[target - cum[lo] < cum[hi] - target ? lo : hi]];
+    };
     if (uniq.length >= 2) {
       const curve = new CatmullRomCurve3(uniq, false, "catmullrom", 0);
       const segs = 300;
@@ -406,7 +429,7 @@ export class View3D {
       const colors = new Float32Array(tube.attributes.position.count * 3);
       const c = new Color();
       for (let i = 0; i <= segs; i++) {
-        const s = inp.dense[Math.round((i / segs) * (inp.dense.length - 1))];
+        const s = denseAtArc(i / segs);
         c.setRGB(s.display[0], s.display[1], s.display[2], "srgb");
         for (let j = 0; j <= radial; j++) {
           const k = (i * (radial + 1) + j) * 3;
@@ -426,45 +449,51 @@ export class View3D {
 
     // Stops get the same dark outline as the tube, so the line stays legible
     // where it runs over gamut colors identical to its own.
-    const stopGeo = new SphereGeometry(0.07, 16, 12);
-    const stopCasingGeo = new SphereGeometry(0.09, 16, 12);
+    // Dots are unit-radius; sizeLabels scales them to `dotPx` screen pixels.
+    const dot = <T extends Object3D>(o: T, px: number): T => {
+      o.userData.dotPx = px;
+      return o;
+    };
+    const stopGeo = new SphereGeometry(1, 16, 12);
     const casingMat = new MeshBasicMaterial({ color: 0x000000, side: 1 /* BackSide */ });
     for (const st of inp.stops) {
-      const m = new Mesh(stopGeo, new MeshBasicMaterial({ color: new Color().setStyle(st.hex, "srgb") }));
+      const m = dot(new Mesh(stopGeo, new MeshBasicMaterial({ color: new Color().setStyle(st.hex, "srgb") })), 3.5);
       m.position.copy(v3(st.embed));
-      const casing = new Mesh(stopCasingGeo, casingMat);
+      const casing = dot(new Mesh(stopGeo, casingMat), 5);
       casing.position.copy(m.position);
       this.pathGroup.add(casing, m);
     }
-    const endGeo = new SphereGeometry(0.13, 24, 16);
+    const endGeo = new SphereGeometry(1, 24, 16);
     for (const [p, col, txt, key] of [
       [inp.A, inp.aColor, "A", "a"],
       [inp.B, inp.bColor, "B", "b"],
     ] as const) {
-      const m = new Mesh(endGeo, new MeshBasicMaterial({ color: new Color().setStyle(col, "srgb") }));
+      const m = dot(new Mesh(endGeo, new MeshBasicMaterial({ color: new Color().setStyle(col, "srgb") })), 9);
       m.position.copy(v3(p));
       m.userData.handle = key;
       this.handleMeshes.push(m);
       this.pathGroup.add(m);
-      const ring = new Mesh(
-        new SphereGeometry(0.16, 24, 16),
-        new MeshBasicMaterial({ color: 0xffffff, side: 1 }),
-      );
+      const ring = dot(new Mesh(endGeo, new MeshBasicMaterial({ color: 0xffffff, side: 1 })), 11);
       ring.position.copy(m.position);
       this.pathGroup.add(ring);
-      const l = label(txt, m.position.clone().add(new Vector3(0, 0, 0.17)), 13, true);
+      const l = label(txt, m.position, 13, true);
+      l.userData.base = m.position.clone();
+      l.userData.liftPx = 13;
       this.pathGroup.add(l);
     }
 
     if (inp.points.length) {
-      const og = new OctahedronGeometry(0.09);
+      const og = new OctahedronGeometry(1);
       inp.points.forEach((p, i) => {
-        const m = new Mesh(og, new MeshBasicMaterial({ color: 0xffffff }));
+        const m = dot(new Mesh(og, new MeshBasicMaterial({ color: 0xffffff })), 9);
         m.position.copy(v3(p));
         m.userData.handle = `p${i}`;
         this.handleMeshes.push(m);
         this.pathGroup.add(m);
-        this.pathGroup.add(label(String(i + 1), m.position.clone().add(new Vector3(0, 0, 0.11)), 11, true));
+        const l = label(String(i + 1), m.position, 11, true);
+        l.userData.base = m.position.clone();
+        l.userData.liftPx = 11;
+        this.pathGroup.add(l);
       });
       if (inp.showPolygon) {
         const g = new BufferGeometry().setFromPoints([inp.A, ...inp.points, inp.B].map(v3));
@@ -534,7 +563,7 @@ export class View3D {
  * nothing hides behind the handle (three r170 dropped its own axis flip).
  */
 function faceGizmoToCamera(controls: TransformControls) {
-  type Gizmo = Object3D & { eye: Vector3; gizmo: Record<string, Object3D>; picker: Record<string, Object3D> };
+  type Gizmo = Object3D & { eye: Vector3; gizmo: Record<string, Object3D>; picker: Record<string, Object3D>; helper: Record<string, Object3D> };
   const g = (controls as unknown as { _gizmo: Gizmo })._gizmo;
   const groups = [g.gizmo.translate, g.picker.translate];
 
@@ -550,6 +579,9 @@ function faceGizmoToCamera(controls: TransformControls) {
       if (geo.boundingBox!.getCenter(center).getComponent(i) < -0.1) group.remove(part);
     }
   }
+
+  // Drop the light-gray infinite line drawn along the hovered or dragged axis.
+  for (const part of [...g.helper.translate.children]) if (part.name in AXIS) g.helper.translate.remove(part);
 
   const update = g.updateMatrixWorld.bind(g);
   g.updateMatrixWorld = (force?: boolean) => {

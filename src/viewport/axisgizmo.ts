@@ -15,26 +15,29 @@ interface End {
   positive: boolean;
 }
 
-/** Blender's axis colors; the negative ends wear a desaturated copy. */
+/** Blender's axis colors; each end is one flat color; the negative end is slightly darker. */
 const X = "#ff3352";
 const Y = "#8bdc00";
 const Z = "#2890ff";
 
+/** Brightness of the negative ends relative to the positive ones. */
+const DARKEN = 0.72;
+
 const ENDS: End[] = [
   { view: "right", dir: new Vector3(1, 0, 0), color: X, positive: true },
-  { view: "left", dir: new Vector3(-1, 0, 0), color: desaturate(X, 0.55), positive: false },
+  { view: "left", dir: new Vector3(-1, 0, 0), color: shade(X, DARKEN), positive: false },
   { view: "back", dir: new Vector3(0, 1, 0), color: Y, positive: true },
-  { view: "front", dir: new Vector3(0, -1, 0), color: desaturate(Y, 0.55), positive: false },
+  { view: "front", dir: new Vector3(0, -1, 0), color: shade(Y, DARKEN), positive: false },
   { view: "top", dir: new Vector3(0, 0, 1), color: Z, positive: true },
-  { view: "bottom", dir: new Vector3(0, 0, -1), color: desaturate(Z, 0.55), positive: false },
+  { view: "bottom", dir: new Vector3(0, 0, -1), color: shade(Z, DARKEN), positive: false },
 ];
 
 /** CSS px: widget size, axis length from the center, half the end cubes' edge. */
 const SIZE = 96;
 const ARM = 34;
-const CUBE_H = 6;
+const CUBE_H = 4.2;
 /** Hit radius around an end's center. */
-const PICK_R = CUBE_H * 1.6;
+const PICK_R = 8;
 /** A press that moves less than this is a click (snap), not a drag (orbit). */
 const CLICK_SLOP_PX = 3;
 
@@ -183,11 +186,11 @@ export class AxisGizmo {
 
 /**
  * A world-aligned cube centered on (x, y): its three camera-facing faces,
- * each shaded by how squarely it faces the viewer. No outline.
+ * flat-filled (emissive, no shading). No outline.
  */
 function drawCube(g: CanvasRenderingContext2D, x: number, y: number, axes: Vector3[], color: string, boost: number) {
   const pt = (v: Vector3): [number, number] => [x + v.x * CUBE_H, y - v.y * CUBE_H];
-  const faces: { z: number; corners: [number, number][] }[] = [];
+  const faces: { corners: [number, number][] }[] = [];
   for (let k = 0; k < 3; k++) {
     for (const s of [1, -1]) {
       const n = axes[k].clone().multiplyScalar(s);
@@ -200,11 +203,11 @@ function drawCube(g: CanvasRenderingContext2D, x: number, y: number, axes: Vecto
         [-1, -1],
         [-1, 1],
       ].map(([i, j]) => pt(n.clone().addScaledVector(a, i).addScaledVector(b, j)));
-      faces.push({ z: n.z, corners });
+      faces.push({ corners });
     }
   }
   for (const f of faces) {
-    g.fillStyle = shade(color, (0.55 + 0.45 * f.z) * boost);
+    g.fillStyle = boost === 1 ? color : shade(color, boost);
     g.beginPath();
     g.moveTo(...f.corners[0]);
     for (const p of f.corners.slice(1)) g.lineTo(...p);
@@ -226,11 +229,4 @@ function toHex(c: number[]): string {
 /** `hex` scaled in brightness by `f` (1 = unchanged). */
 function shade(hex: string, f: number): string {
   return toHex(parseHex(hex).map((v) => v * f));
-}
-
-/** `hex` pulled toward its own gray by `t` (0 = unchanged, 1 = gray). */
-function desaturate(hex: string, t: number): string {
-  const [r, g, b] = parseHex(hex);
-  const gray = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-  return toHex([r, g, b].map((v) => v + (gray - v) * t));
 }
