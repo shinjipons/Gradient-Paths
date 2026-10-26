@@ -1,5 +1,7 @@
+import "@fontsource-variable/inter";
 import { inject } from "@vercel/analytics";
 import { Object3D } from "three";
+import { Blend, ChartSpline, createElement, Orbit, Rainbow, Route, Slash, Spline, SplinePointer, type IconNode } from "lucide";
 import { clamp01, hexToRgb, oklabToSrgb, rgbToHex, srgbToOklab, type Vec3 } from "./color/convert";
 import { SPACES, spaceById } from "./color/spaces";
 import {
@@ -80,12 +82,28 @@ spaceSel.onchange = () => {
   render();
 };
 
-const modeSel = $<HTMLSelectElement>("mode");
-modeSel.innerHTML = MODES.map((m) => `<option value="${m.id}">${m.label}</option>`).join("");
-modeSel.onchange = () => {
-  state.mode = modeSel.value as PathMode;
-  render();
+// Path modes live in the 3D view's vertical toolbar, one icon button each.
+const MODE_ICONS: Record<PathMode, IconNode> = {
+  native: Blend,
+  line: Slash,
+  cylindrical: Orbit,
+  arc: Rainbow,
+  quadratic: Spline,
+  cubic: SplinePointer,
+  polyline: Route,
+  spline: ChartSpline,
 };
+const modeBtns = new Map<PathMode, HTMLButtonElement>();
+for (const m of MODES) {
+  const b = document.createElement("button");
+  b.className = "tool-btn";
+  b.title = `${m.label}: ${m.hint.replace(/`/g, "")}`;
+  b.setAttribute("aria-label", m.label);
+  b.append(createElement(MODE_ICONS[m.id], { width: 18, height: 18 }));
+  b.onclick = () => { state.mode = m.id; render(); };
+  modeBtns.set(m.id, b);
+  $("view3d-tools").append(b);
+}
 
 seg<HueMode>($("hue-seg"), [
   { v: "shorter", label: "Shorter" },
@@ -262,9 +280,8 @@ function render(opts: { keepPlane?: boolean } = {}) {
   }
   spaceSel.value = space.id;
   spaceSel.title = `${space.label} — ${space.blurb}`;
-  $("space-blurb").textContent = space.blurb;
-  modeSel.value = state.mode;
-  $("mode-hint").innerHTML = info.hint.replace(/`([^`]+)`/g, "<code>$1</code>");
+  for (const [id, b] of modeBtns) b.setAttribute("aria-pressed", String(id === state.mode));
+  $("mode-title").textContent = info.label;
   const hueApplies = !!info.usesHue && (state.mode === "cylindrical" || space.hueIndex >= 0);
   $("hue-field").hidden = !info.usesHue;
   segSet($("hue-seg"), state.hueMode, !hueApplies);
@@ -401,7 +418,7 @@ function render(opts: { keepPlane?: boolean } = {}) {
   });
   const top = niceMax(maxS * 1.15);
   chartSpeed.update({
-    series: [{ name: "ΔE / 1%", color: "#3987e5", values: [speed[0], ...speed], format: (i) => (speed[Math.max(0, i - 1)]).toFixed(2) }],
+    series: [{ name: "ΔE / 1%", color: getComputedStyle(document.documentElement).getPropertyValue("--accent").trim(), values: [speed[0], ...speed], format: (i) => (speed[Math.max(0, i - 1)]).toFixed(2) }],
     band,
     yMin: 0,
     yMax: top,
@@ -444,6 +461,8 @@ function niceMax(x: number): number {
 function setRange(id: string, v: number, text: string) {
   const el = $<HTMLInputElement>(id);
   if (document.activeElement !== el) el.value = String(v);
+  const [lo, hi] = [Number(el.min), Number(el.max)];
+  el.parentElement!.style.setProperty("--p", `${((v - lo) / (hi - lo)) * 100}%`);
   const out = document.getElementById(`${id}-out`);
   if (out) out.textContent = text;
 }
