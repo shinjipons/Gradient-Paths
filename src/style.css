@@ -128,6 +128,7 @@ body { margin: 0; background: var(--bg); }
   font: inherit; white-space: nowrap;
 }
 .seg.small button { padding: 4px 7px; font-size: 12px; }
+.mode-panel .seg { flex-direction: column; }
 .seg button:hover { color: var(--text-primary); }
 .seg button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .seg button:disabled { opacity: .35; cursor: default; }
