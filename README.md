@@ -30,7 +30,7 @@ The URL hash holds the current state, so you can share a link to it.
 
 ## Navigation
 
-**3D view.** Middle-drag to pan, or right-drag to orbit. Shift swaps the two (Shift+middle orbits, Shift+right pans), and Ctrl dollies. Use the wheel or a pinch to zoom toward the cursor, and a two-finger drag to orbit. The left button never moves the camera: click a handle to select it, then drag the gizmo's arrows. The axis widget in the top-right corner snaps to a view along any axis when you click one of its ends, and orbits when you drag it.
+**3D view.** Middle- or right-drag to orbit. Add Shift to pan, or Ctrl to dolly. Use the wheel or a pinch to zoom toward the cursor, and a two-finger drag to orbit. The left button never moves the camera: click a handle to select it, then drag the gizmo's arrows. The axis widget in the top-right corner snaps to a view along any axis when you click one of its ends, and orbits when you drag it.
 
 **2D slice.** Drag a handle to move it; hold Shift to lock the move horizontally or vertically. Drag empty space, or right- or middle-drag, to pan. Use the wheel or a pinch to zoom.
 
