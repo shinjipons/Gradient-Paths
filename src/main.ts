@@ -106,10 +106,10 @@ for (const m of MODES) {
 }
 
 seg<HueMode>($("hue-seg"), [
-  { v: "shorter", label: "Shorter" },
-  { v: "longer", label: "Longer" },
-  { v: "increasing", label: "↻ Incr." , title: "Increasing hue" },
-  { v: "decreasing", label: "↺ Decr.", title: "Decreasing hue" },
+  { v: "shorter", label: "Shorter arc" },
+  { v: "longer", label: "Longer arc" },
+  { v: "increasing", label: "Increasing hue" },
+  { v: "decreasing", label: "Decreasing hue" },
 ], (v) => { state.hueMode = v; render(); });
 
 seg<Spacing>($("spacing-seg"), [
@@ -329,10 +329,10 @@ function render(opts: { keepPlane?: boolean } = {}) {
   used.forEach((p, i) => {
     const native = space.unembed(p);
     const rgb = space.toRGB(native);
-    const ok = rgb.every((v) => v >= -1e-4 && v <= 1 + 1e-4);
+    // Control points steer the curve and may sit outside sRGB; only the path and its stops are flagged for it.
     const disp = rgbToHex(mapToGamut(rgb.every(Number.isFinite) ? rgb : [0, 0, 0]));
     const li = document.createElement("li");
-    li.innerHTML = `<span class="n">${i + 1}</span><span class="sw${ok ? "" : " oog"}" style="background:${disp}"></span><code>${formatNative(native)}${ok ? "" : " · outside sRGB"}</code>`;
+    li.innerHTML = `<span class="n">${i + 1}</span><span class="sw" style="background:${disp}"></span><code>${formatNative(native)}</code>`;
     if (info.points === "many" && used.length > 1) {
       const del = document.createElement("button");
       del.textContent = "×";

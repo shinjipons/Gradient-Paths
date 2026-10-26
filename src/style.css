@@ -98,6 +98,9 @@ body { margin: 0; background: var(--bg); }
   --panel-radius: var(--radius); --slider-radius: 6px;
 }
 .mode-panel #arc-fields { display: flex; flex-direction: column; gap: 6px; margin: 12px 0 0; }
+/* Stacked like the arc's sliders: no sub-label, 12px under the title, 6px apart. */
+.mode-panel #hue-field { margin: 12px 0 0; }
+.mode-panel .points { margin-top: 6px; gap: 6px; }
 .mode-panel h3 { margin: 0 0 6px; font-size: 13px; line-height: 1; font-weight: 600; }
 .mode-panel > :last-child, .mode-panel [hidden] + :last-child { margin-bottom: 0; }
 .pop-panel .seg button, .pop-panel select, .pop-panel .points li,
@@ -131,7 +134,12 @@ body { margin: 0; background: var(--bg); }
   font: inherit; white-space: nowrap;
 }
 .seg.small button { padding: 4px 7px; font-size: 12px; }
-.mode-panel .seg { flex-direction: column; }
+.mode-panel .seg { flex-direction: column; gap: 6px; }
+/* As tall as the panel's sliders, labeled like them. */
+.mode-panel .seg button {
+  box-sizing: border-box; height: 32px; padding: 0 10px; border-radius: var(--slider-radius);
+  font-size: 13px; font-weight: 600; color: var(--text-primary);
+}
 .seg button:hover { color: var(--text-primary); }
 .seg button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .seg button:disabled { opacity: .35; cursor: default; }
@@ -172,7 +180,6 @@ select { width: 100%; }
 }
 .points li .n { width: 16px; color: var(--text-muted); font-weight: 600; }
 .points li .sw { width: 18px; height: 18px; border-radius: 4px; border: 1px solid rgba(255,255,255,.2); }
-.points li .sw.oog { background-image: repeating-linear-gradient(45deg, transparent 0 3px, rgba(0,0,0,.5) 3px 5px) !important; }
 .points li code { flex: 1; color: var(--text-secondary); font-size: 11px; }
 .points li button { background: none; border: 0; color: var(--text-muted); cursor: pointer; font-size: 14px; }
 .points li button:hover { color: var(--text-primary); }

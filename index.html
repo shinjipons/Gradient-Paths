@@ -141,9 +141,8 @@
               <!-- Options of the active path mode, over the 3D view's bottom-left corner. -->
               <section class="mode-panel" aria-label="Path options">
                 <h3 id="mode-title"></h3>
-                <div class="field" id="hue-field">
-                  <span>Hue direction</span>
-                  <div class="seg small" id="hue-seg"></div>
+                <div id="hue-field">
+                  <div class="seg small" id="hue-seg" role="group" aria-label="Hue direction"></div>
                 </div>
                 <div id="arc-fields">
                   <label class="slider">
@@ -163,7 +162,6 @@
                     <button id="add-point" class="text-btn">+ Add</button>
                   </div>
                   <ul id="points" class="points"></ul>
-                  <p class="hint">Drag the numbered squares in the slice view. In waypoint modes, double-click the slice to add one.</p>
                 </div>
               </section>
               <div class="viewport" id="view3d">
