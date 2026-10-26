@@ -390,15 +390,12 @@ export class SliceView {
         ctx.textBaseline = "middle";
         ctx.fillText(String(hd.index + 1), x, y + 0.5);
       } else {
+        // A and B are ringed in black, like their swatches in the top bar and their dots in 3D.
         ctx.beginPath();
         ctx.arc(x, y, hot ? 10 : 9, 0, Math.PI * 2);
         ctx.fillStyle = hd.kind === "a" ? inp.aColor : inp.bColor;
         ctx.fill();
-        ctx.stroke();
-        ctx.strokeStyle = "rgba(0,0,0,0.6)";
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.arc(x, y, (hot ? 10 : 9) + 2, 0, Math.PI * 2);
+        ctx.strokeStyle = "#000";
         ctx.stroke();
       }
     }
