@@ -219,8 +219,9 @@ document.addEventListener("keydown", (e) => {
 });
 
 const view3d = new View3D($("view3d"), {
-  onDragStart: () => (undoHistory.holding = true),
-  onDragEnd: () => { undoHistory.holding = false; render(); },
+  // The slice keeps re-orienting live, which re-rasterizes it every frame: a draft one while dragging.
+  onDragStart: () => { slice.setDraft(true); undoHistory.holding = true; },
+  onDragEnd: () => { undoHistory.holding = false; slice.setDraft(false); render(); },
   onEndpoint: (which, rgb) => { state[which] = rgb; scheduleRender(); },
   onPoint: (i, e) => { state.points[i] = e; scheduleRender(); },
 });
@@ -281,7 +282,8 @@ let lastDense: Vec3[] = [];
 
 let raf = 0;
 function scheduleRender() {
-  // Only 2D drags and resizes come through here; neither should re-orient the slice.
+  // Only drags and resizes come through here. A 2D drag holds the slice still (lockedPlane);
+  // a 3D drag leaves it unlocked, so it re-orients as the path moves.
   if (!raf) raf = requestAnimationFrame(() => { raf = 0; render({ keepPlane: true }); });
 }
 

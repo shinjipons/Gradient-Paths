@@ -46,6 +46,30 @@ const S = 2.2;
 const HOME_DIR = new Vector3(6.5, -7.5, 4.5).normalize();
 const v3 = (p: Vec3) => new Vector3(p[0] * S, p[1] * S, p[2] * S);
 
+// Shared by every rebuild of the path: dots are unit-radius, and sizeLabels
+// scales them to their `dotPx` screen size.
+const STOP_GEO = new SphereGeometry(1, 16, 12);
+const END_GEO = new SphereGeometry(1, 24, 16);
+const POINT_GEO = new OctahedronGeometry(1);
+/** Dark outline, back faces only, slightly larger than what it outlines. */
+const CASING_MAT = new MeshBasicMaterial({ color: 0x000000, side: 1 /* BackSide */ });
+const RING_MAT = new MeshBasicMaterial({ color: 0xffffff, side: 1 /* BackSide */ });
+const POINT_MAT = new MeshBasicMaterial({ color: 0xffffff });
+
+type Dot = Mesh<BufferGeometry, MeshBasicMaterial>;
+
+const dot = <T extends Object3D>(o: T, px: number): T => {
+  o.userData.dotPx = px;
+  return o;
+};
+
+/** A handle's label, which sizeLabels hangs `px` screen pixels above `userData.base`. */
+const lifted = (l: Sprite, px: number): Sprite => {
+  l.userData.base = new Vector3();
+  l.userData.liftPx = px;
+  return l;
+};
+
 interface PathInput {
   dense: Sample[];
   stops: Sample[];
@@ -96,7 +120,7 @@ export class View3D {
   private space: ColorSpace | null = null;
 
   // Handle selection (A, B, control points) + translate gizmo. The gizmo drives a persistent proxy
-  // object, since the path meshes are rebuilt on every update.
+  // object, since handle meshes come and go with the control points.
   private gizmo: TransformControls;
   /** Blender-style axis widget in the top-right corner. */
   private axisGizmo: AxisGizmo;
@@ -393,8 +417,21 @@ export class View3D {
 
   // --- path ------------------------------------------------------------------
 
+  // Made once and reused: a drag calls setPath every frame, and each new
+  // material or label texture costs the renderer a setup on its next draw.
+  // Only the tube and the control polygon get new geometry.
+  private tube: Mesh = new Mesh(new BufferGeometry(), new MeshBasicMaterial({ vertexColors: true }));
+  private tubeCasing: Mesh = new Mesh(new BufferGeometry(), CASING_MAT);
+  private stopDots: { dot: Dot; casing: Mesh }[] = [];
+  private ends: Partial<Record<"a" | "b", { dot: Dot; ring: Mesh; label: Sprite }>> = {};
+  private pointHandles: { dot: Mesh; label: Sprite }[] = [];
+  private polygon = new Line(
+    new BufferGeometry(),
+    new LineDashedMaterial({ color: 0xffffff, dashSize: 0.12, gapSize: 0.08, transparent: true, opacity: 0.7 }),
+  );
+
   setPath(inp: PathInput) {
-    disposeChildren(this.pathGroup);
+    this.pathGroup.clear();
     this.handleMeshes = [];
     this.handles = new Map<string, Vec3>([["a", inp.A], ["b", inp.B]]);
     inp.points.forEach((p, i) => this.handles.set(`p${i}`, p));
@@ -439,71 +476,62 @@ export class View3D {
         }
       }
       tube.setAttribute("color", new BufferAttribute(colors, 3));
-      this.pathGroup.add(new Mesh(tube, new MeshBasicMaterial({ vertexColors: true })));
+      this.tube.geometry.dispose();
+      this.tube.geometry = tube;
       // Dark casing, slightly larger, back faces only: reads as an outline.
-      const casing = new TubeGeometry(curve, segs, 0.05, radial, false);
-      this.pathGroup.add(
-        new Mesh(casing, new MeshBasicMaterial({ color: 0x000000, side: 1 /* BackSide */ })),
-      );
+      this.tubeCasing.geometry.dispose();
+      this.tubeCasing.geometry = new TubeGeometry(curve, segs, 0.05, radial, false);
+      this.pathGroup.add(this.tube, this.tubeCasing);
     }
 
     // Stops get the same dark outline as the tube, so the line stays legible
     // where it runs over gamut colors identical to its own.
-    // Dots are unit-radius; sizeLabels scales them to `dotPx` screen pixels.
-    const dot = <T extends Object3D>(o: T, px: number): T => {
-      o.userData.dotPx = px;
-      return o;
-    };
-    const stopGeo = new SphereGeometry(1, 16, 12);
-    const casingMat = new MeshBasicMaterial({ color: 0x000000, side: 1 /* BackSide */ });
-    for (const st of inp.stops) {
-      const m = dot(new Mesh(stopGeo, new MeshBasicMaterial({ color: new Color().setStyle(st.hex, "srgb") })), 3.5);
-      m.position.copy(v3(st.embed));
-      const casing = dot(new Mesh(stopGeo, casingMat), 5);
-      casing.position.copy(m.position);
-      this.pathGroup.add(casing, m);
-    }
-    const endGeo = new SphereGeometry(1, 24, 16);
-    for (const [p, col, txt, key] of [
-      [inp.A, inp.aColor, "A", "a"],
-      [inp.B, inp.bColor, "B", "b"],
+    inp.stops.forEach((st, i) => {
+      const s = (this.stopDots[i] ??= {
+        dot: dot(new Mesh(STOP_GEO, new MeshBasicMaterial()), 3.5),
+        casing: dot(new Mesh(STOP_GEO, CASING_MAT), 5),
+      });
+      s.dot.material.color.setStyle(st.hex, "srgb");
+      s.dot.position.copy(v3(st.embed));
+      s.casing.position.copy(s.dot.position);
+      this.pathGroup.add(s.casing, s.dot);
+    });
+    for (const [p, col, key] of [
+      [inp.A, inp.aColor, "a"],
+      [inp.B, inp.bColor, "b"],
     ] as const) {
-      const m = dot(new Mesh(endGeo, new MeshBasicMaterial({ color: new Color().setStyle(col, "srgb") })), 9);
-      m.position.copy(v3(p));
-      m.userData.handle = key;
-      this.handleMeshes.push(m);
-      this.pathGroup.add(m);
-      const ring = dot(new Mesh(endGeo, new MeshBasicMaterial({ color: 0xffffff, side: 1 })), 11);
-      ring.position.copy(m.position);
-      this.pathGroup.add(ring);
-      const l = label(txt, m.position, 13, true);
-      l.userData.base = m.position.clone();
-      l.userData.liftPx = 13;
-      this.pathGroup.add(l);
+      const e = (this.ends[key] ??= {
+        dot: dot(new Mesh(END_GEO, new MeshBasicMaterial()), 9),
+        ring: dot(new Mesh(END_GEO, RING_MAT), 11),
+        label: lifted(label(key.toUpperCase(), new Vector3(), 13, true), 13),
+      });
+      e.dot.material.color.setStyle(col, "srgb");
+      e.dot.position.copy(v3(p));
+      e.dot.userData.handle = key;
+      e.ring.position.copy(e.dot.position);
+      e.label.userData.base.copy(e.dot.position);
+      e.label.position.copy(e.dot.position);
+      this.handleMeshes.push(e.dot);
+      this.pathGroup.add(e.dot, e.ring, e.label);
     }
 
-    if (inp.points.length) {
-      const og = new OctahedronGeometry(1);
-      inp.points.forEach((p, i) => {
-        const m = dot(new Mesh(og, new MeshBasicMaterial({ color: 0xffffff })), 9);
-        m.position.copy(v3(p));
-        m.userData.handle = `p${i}`;
-        this.handleMeshes.push(m);
-        this.pathGroup.add(m);
-        const l = label(String(i + 1), m.position, 11, true);
-        l.userData.base = m.position.clone();
-        l.userData.liftPx = 11;
-        this.pathGroup.add(l);
+    inp.points.forEach((p, i) => {
+      const h = (this.pointHandles[i] ??= {
+        dot: dot(new Mesh(POINT_GEO, POINT_MAT), 9),
+        label: lifted(label(String(i + 1), new Vector3(), 11, true), 11),
       });
-      if (inp.showPolygon) {
-        const g = new BufferGeometry().setFromPoints([inp.A, ...inp.points, inp.B].map(v3));
-        const line = new Line(
-          g,
-          new LineDashedMaterial({ color: 0xffffff, dashSize: 0.12, gapSize: 0.08, transparent: true, opacity: 0.7 }),
-        );
-        line.computeLineDistances();
-        this.pathGroup.add(line);
-      }
+      h.dot.position.copy(v3(p));
+      h.dot.userData.handle = `p${i}`;
+      h.label.userData.base.copy(h.dot.position);
+      h.label.position.copy(h.dot.position);
+      this.handleMeshes.push(h.dot);
+      this.pathGroup.add(h.dot, h.label);
+    });
+    if (inp.points.length && inp.showPolygon) {
+      this.polygon.geometry.dispose();
+      this.polygon.geometry = new BufferGeometry().setFromPoints([inp.A, ...inp.points, inp.B].map(v3));
+      this.polygon.computeLineDistances();
+      this.pathGroup.add(this.polygon);
     }
 
     this.setPlane(inp.plane);
@@ -511,9 +539,19 @@ export class View3D {
 
   /** Fat-line materials need the viewport size to draw their pixel widths. */
   private lineMaterials: LineMaterial[] = [];
+  private planeLines: LineSegments2[] = [];
+  private planeFill = new Mesh(
+    new BufferGeometry(),
+    new MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.04, side: DoubleSide, depthWrite: false }),
+  );
+  private planeKey = "";
 
+  /**
+   * The outline's lines and materials are made once: a new LineMaterial is a
+   * large shader the renderer sets up again on its next draw. Only the
+   * geometry follows the plane, and only when its corners move.
+   */
   private setPlane(pl: Plane) {
-    disposeChildren(this.planeGroup);
     const [u0, u1, v0, v1] = pl.view;
     const corners = [
       unproject(pl, u0, v0),
@@ -525,34 +563,37 @@ export class View3D {
     // Drawn through the gamut, with a dark casing, so the whole outline shows.
     const order = [0, 1, 1, 2, 2, 3, 3, 0];
     const positions = order.flatMap((i) => corners[i].toArray());
-    const size = this.renderer.getSize(new Vector2());
-    this.lineMaterials = [];
-    for (const [width, colored, order] of [[5, false, 1], [2.5, true, 2]] as const) {
-      const geo = new LineSegmentsGeometry().setPositions(positions);
-      const mat = new LineMaterial({
-        linewidth: width,
-        color: colored ? new Color().setStyle(PLANE_EDGE, "srgb") : 0x000000,
-        transparent: true,
-        opacity: colored ? 1 : 0.6,
-        depthTest: false,
-        dashed: true,
-        dashSize: 0.012,
-        gapSize: 0.03,
-      });
-      mat.resolution.copy(size);
-      this.lineMaterials.push(mat);
-      const line = new LineSegments2(geo, mat);
-      line.computeLineDistances();
-      line.renderOrder = order;
-      this.planeGroup.add(line);
+    const key = positions.join();
+    if (key === this.planeKey) return;
+    this.planeKey = key;
+    if (!this.planeLines.length) {
+      const size = this.renderer.getSize(new Vector2());
+      for (const [width, colored, order] of [[5, false, 1], [2.5, true, 2]] as const) {
+        const mat = new LineMaterial({
+          linewidth: width,
+          color: colored ? new Color().setStyle(PLANE_EDGE, "srgb") : 0x000000,
+          transparent: true,
+          opacity: colored ? 1 : 0.6,
+          depthTest: false,
+          dashed: true,
+          dashSize: 0.012,
+          gapSize: 0.03,
+        });
+        mat.resolution.copy(size);
+        this.lineMaterials.push(mat);
+        const line = new LineSegments2(new LineSegmentsGeometry(), mat);
+        line.renderOrder = order;
+        this.planeLines.push(line);
+      }
+      this.planeGroup.add(...this.planeLines, this.planeFill);
     }
-    const fill = new BufferGeometry().setFromPoints([corners[0], corners[1], corners[2], corners[0], corners[2], corners[3]]);
-    this.planeGroup.add(
-      new Mesh(
-        fill,
-        new MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.04, side: DoubleSide, depthWrite: false }),
-      ),
-    );
+    for (const line of this.planeLines) {
+      line.geometry.dispose();
+      line.geometry = new LineSegmentsGeometry().setPositions(positions);
+      line.computeLineDistances();
+    }
+    this.planeFill.geometry.dispose();
+    this.planeFill.geometry = new BufferGeometry().setFromPoints([corners[0], corners[1], corners[2], corners[0], corners[2], corners[3]]);
   }
 }
 
