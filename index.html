@@ -86,11 +86,6 @@
             </div>
           </div>
   
-          <div class="group" role="group" aria-label="Color space">
-            <span class="group-label">Space</span>
-            <select id="space" aria-label="Color space"></select>
-          </div>
-  
           <div class="group" role="group" aria-label="Path">
             <span class="group-label">Path</span>
             <select id="mode"></select>
@@ -162,7 +157,7 @@
           <section class="views">
             <div class="card view">
               <div class="view-head">
-                <h3>3D</h3>
+                <select id="space" aria-label="Color space"></select>
                 <div class="toolbar">
                   <select id="solid" title="Gamut display">
                     <option value="surface">Surface</option>
@@ -170,21 +165,14 @@
                     <option value="wire">Wireframe</option>
                     <option value="none">Hidden</option>
                   </select>
-                  <input type="range" id="opacity" min="0.05" max="1" step="0.05" title="Surface opacity" />
                   <button id="reset-cam" class="text-btn" title="Reset camera">⟲</button>
                 </div>
               </div>
-              <!-- Always open, pinned over the 3D view's bottom-right corner. -->
-              <section class="pinned-chart channels-panel" aria-label="Channels">
-                <h3>Channels <small id="channels-sub"></small></h3>
-                <div class="chart-host" id="chart-channels"></div>
-              </section>
               <div class="viewport" id="view3d">
               </div>
             </div>
             <div class="card view">
               <div class="view-head">
-                <h3>2D slice</h3>
                 <div class="toolbar">
                   <button id="reset-slice" class="text-btn" title="Reset pan and zoom">⟲</button>
                 </div>
@@ -193,6 +181,11 @@
               <section class="pinned-chart speed-panel" aria-label="Perceptual speed">
                 <h3>Perceptual speed <small>ΔE OK per 1% — flat means even</small></h3>
                 <div class="chart-host" id="chart-speed"></div>
+              </section>
+              <!-- Always open, pinned over the slice's bottom-right corner. -->
+              <section class="pinned-chart channels-panel" aria-label="Channels">
+                <h3>Channels <small id="channels-sub"></small></h3>
+                <div class="chart-host" id="chart-channels"></div>
               </section>
               <div class="viewport" id="slice">
               </div>
@@ -210,10 +203,6 @@
             <div class="strip-row">
               <span class="strip-label" id="stops-label">Stops</span>
               <div class="stops" id="stop-swatches"></div>
-            </div>
-            <div class="strip-row">
-              <span class="strip-label" id="native-label">Browser</span>
-              <div class="strip-wrap"><div class="native" id="native"></div></div>
             </div>
           </div>
           <div class="gradient-info">

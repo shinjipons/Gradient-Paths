@@ -113,7 +113,6 @@ const bind = (id: string, apply: (v: number) => void) => {
 bind("bend", (v) => (state.arcBend = v));
 bind("roll", (v) => (state.arcRoll = v));
 bind("stops", (v) => (state.stops = v));
-bind("opacity", (v) => (state.opacity = v));
 $<HTMLSelectElement>("easing").onchange = (e) => { state.easing = (e.target as HTMLSelectElement).value as typeof state.easing; render(); };
 $<HTMLSelectElement>("solid").onchange = (e) => { state.solid = (e.target as HTMLSelectElement).value as SolidStyle; render(); };
 
@@ -207,17 +206,18 @@ const updateSliceInset = () => {
   const view = $("slice").closest(".view")!;
   const head = view.querySelector(".view-head")!.getBoundingClientRect();
   if (head.height > 0) top = head.bottom - box.top + 8;
-  // The speed chart is always open, so reserving all of it never resizes the plot.
+  // The charts are always open, so reserving all of the taller one never resizes the plot.
   let bottom = 0;
-  const speed = view.querySelector<HTMLElement>(".speed-panel")!;
-  if (getComputedStyle(speed).position === "absolute") {
-    bottom = box.bottom - speed.getBoundingClientRect().top + 8;
+  for (const chart of view.querySelectorAll<HTMLElement>(".pinned-chart")) {
+    if (getComputedStyle(chart).position === "absolute") {
+      bottom = Math.max(bottom, box.bottom - chart.getBoundingClientRect().top + 8);
+    }
   }
   slice.setInsets(Math.max(0, top), Math.max(0, bottom));
 };
 const insetObserver = new ResizeObserver(updateSliceInset);
 insetObserver.observe($("slice"));
-insetObserver.observe(document.querySelector(".speed-panel")!);
+for (const chart of $("slice").closest(".view")!.querySelectorAll(".pinned-chart")) insetObserver.observe(chart);
 
 $("reset-slice").onclick = () => slice.resetView();
 
@@ -278,8 +278,6 @@ function render(opts: { keepPlane?: boolean } = {}) {
   $<HTMLSelectElement>("easing").value = state.easing;
   segSet($("gamut-seg"), state.gamut);
   $<HTMLSelectElement>("solid").value = state.solid;
-  setRange("opacity", state.opacity, "");
-  $<HTMLInputElement>("opacity").hidden = state.solid !== "surface";
 
   // Control point list.
   $("points-field").hidden = info.points === 0;
@@ -335,20 +333,6 @@ function render(opts: { keepPlane?: boolean } = {}) {
     d.append(label);
     d.onclick = () => navigator.clipboard?.writeText(st.hex).catch(() => {});
     $("stop-swatches").append(d);
-  }
-
-  // Browser's own interpolation, for comparison.
-  const native = $("native");
-  if (space.css) {
-    const hue = space.hueIndex >= 0 ? ` ${state.hueMode} hue` : "";
-    const g = `linear-gradient(to right in ${space.css}${hue}, ${aHex}, ${bHex})`;
-    native.style.background = CSS.supports("background-image", g) ? g : "none";
-    $("native-label").textContent = `CSS in ${space.css}`;
-    native.title = g;
-  } else {
-    native.style.background = "repeating-linear-gradient(45deg, #1f1f1d 0 6px, #191918 6px 12px)";
-    $("native-label").textContent = "No CSS space";
-    native.title = `${space.label} has no CSS interpolation space`;
   }
 
   const n = grad.stops.length;
