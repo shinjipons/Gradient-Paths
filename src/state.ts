@@ -33,7 +33,7 @@ export const DEFAULT_STATE: AppState = {
   stops: 11,
   spacing: "parameter",
   easing: "linear",
-  solid: "surface",
+  solid: "points",
   opacity: 0.5,
 };
 

@@ -137,12 +137,10 @@ function ctrlOrCmd(e: MouseEvent | WheelEvent): boolean {
  * button: drag to orbit, Ctrl/Cmd+drag to dolly, Shift+drag to truck. The wheel
  * dollies, through the same pivot-under-cursor path.
  *
- * A two-button mouse has no middle button, so the right button is one: the
- * same three movements under the same modifiers, handed to the same code. The
- * unmodified drag orbits, because orbit is what the unmodified drag is
- * everywhere else here — on the middle button and on two trackpad fingers —
- * and a mouse with one button fewer should not have to learn a different
- * scheme to get the movement it reaches for most.
+ * The right button carries the same three movements, handed to the same code,
+ * with orbit and truck swapped: the unmodified right drag pans and Shift+right
+ * drag orbits. So a mouse with both buttons has orbit and pan one button apart,
+ * and a two-button mouse still reaches orbit with Shift.
  *
  * The same three movements are on the trackpad, reached by gesture instead of
  * by modifier: two-finger drag orbits, pinch dollies, Shift+two-finger drag
@@ -298,7 +296,8 @@ export class Navigation {
     // Stopped here rather than merely defaulted: the point is that nothing
     // else on the canvas sees the press at all.
     e.stopPropagation();
-    this.startDrag(ctrlOrCmd(e) ? "dolly" : e.shiftKey ? "truck" : "orbit", e);
+    // The unmodified right drag pans; Shift hands it to orbit, which the middle button does unmodified.
+    this.startDrag(ctrlOrCmd(e) ? "dolly" : e.shiftKey ? "orbit" : "truck", e);
   };
 
   /** Open a drag: what it does, where it started, and the pivot it turns on. */

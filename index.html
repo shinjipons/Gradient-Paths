@@ -138,6 +138,8 @@
               </div>
               <!-- Vertical tool strip down the 3D view's left edge, below the space select. -->
               <div class="vtoolbar" id="view3d-tools" role="toolbar" aria-orientation="vertical" aria-label="3D tools"></div>
+              <!-- A second strip down the right edge, below the axis widget. -->
+              <div class="vtoolbar right" id="view3d-tools-right" role="toolbar" aria-orientation="vertical" aria-label="3D view tools"></div>
               <!-- Options of the active path mode, over the 3D view's bottom-left corner. -->
               <section class="mode-panel" aria-label="Path options">
                 <h3 id="mode-title"></h3>
@@ -162,6 +164,7 @@
                     <button id="add-point" class="text-btn">+ Add</button>
                   </div>
                   <ul id="points" class="points"></ul>
+                  <button id="planarize" class="wide-btn" title="Project the control points onto the section plane, along its normal">Planarize</button>
                 </div>
               </section>
               <div class="viewport" id="view3d">

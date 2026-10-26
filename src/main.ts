@@ -1,7 +1,22 @@
 import "@fontsource-variable/inter";
 import { inject } from "@vercel/analytics";
 import { Object3D } from "three";
-import { Blend, ChartSpline, createElement, Orbit, Rainbow, Route, Slash, Spline, SplinePointer, type IconNode } from "lucide";
+import {
+  Blend,
+  Camera,
+  ChartSpline,
+  createElement,
+  GitFork,
+  Globe,
+  Orbit,
+  Rainbow,
+  Route,
+  Slash,
+  Spline,
+  SplinePointer,
+  SquareDashed,
+  type IconNode,
+} from "lucide";
 import { clamp01, hexToRgb, oklabToSrgb, rgbToHex, srgbToOklab, type Vec3 } from "./color/convert";
 import { SPACES, spaceById } from "./color/spaces";
 import {
@@ -15,13 +30,13 @@ import {
   type PathMode,
   type Spacing,
 } from "./path/paths";
-import { add, dist, scale } from "./path/vec";
+import { add, dist, dot, scale, sub } from "./path/vec";
 import { UndoHistory } from "./history";
 import { convertPoints, deserialize, serialize, type SolidStyle } from "./state";
 import { LineChart, type Series } from "./views/charts";
 import { makePlane, type Plane } from "./views/plane";
 import { SliceView } from "./views/slice2d";
-import { View3D } from "./views/view3d";
+import { View3D, type TranslateSpace } from "./views/view3d";
 
 // Vercel Web Analytics. Its route tracking only hooks pushState, and the app
 // writes its state with replaceState, so editing a gradient adds no page
@@ -149,6 +164,20 @@ $("add-point").onclick = () => {
   render();
 };
 
+// Clicking a button over the 3D view (either toolbar, the path options panel) must not leave it
+// focused: Shift, a 3D-view modifier, would then light up its keyboard focus ring. Tab still focuses them.
+document.addEventListener("mousedown", (e) => {
+  if ((e.target as Element).closest?.(".vtoolbar button, .mode-panel button")) e.preventDefault();
+});
+
+// Flatten the curve into the section plane: each control point drops along the plane's normal.
+$("planarize").onclick = () => {
+  const pl = currentPlane;
+  if (!pl) return;
+  state.points = state.points.map((p) => sub(p, scale(pl.n, dot(sub(p, pl.origin), pl.n))));
+  render();
+};
+
 
 /** The gradient's stops as a CSS background, refreshed on every render. */
 let gradientCss = "";
@@ -221,6 +250,34 @@ const view3d = new View3D($("view3d"), {
   onPoint: (i, e) => { state.points[i] = e; scheduleRender(); },
 });
 $("reset-cam").onclick = () => view3d.reset();
+
+// Right-edge tools: which axes the selection gizmo moves a handle along.
+const SPACE_TOOLS: { v: TranslateSpace; label: string; hint: string; icon: IconNode }[] = [
+  { v: "world", label: "World axes", hint: "Move along the color space's own X, Y and Z axes", icon: Globe },
+  { v: "camera", label: "Camera axes", hint: "Move across the screen, left–right and up–down", icon: Camera },
+  { v: "plane", label: "Section plane axes", hint: "Move within the section plane, or along its normal", icon: SquareDashed },
+  {
+    v: "slide",
+    label: "Slide along edges",
+    hint: "Control points: slide along either control-polygon edge, or along their bisector. Endpoints use world axes",
+    icon: GitFork,
+  },
+];
+const spaceBtns = SPACE_TOOLS.map(({ v, label, hint, icon }) => {
+  const b = document.createElement("button");
+  b.className = "tool-btn";
+  b.title = `${label}: ${hint}`;
+  b.setAttribute("aria-label", label);
+  b.append(createElement(icon, { width: 18, height: 18 }));
+  b.onclick = () => setTranslateSpace(v);
+  $("view3d-tools-right").append(b);
+  return b;
+});
+function setTranslateSpace(v: TranslateSpace) {
+  view3d.setTranslateSpace(v);
+  spaceBtns.forEach((b, i) => b.setAttribute("aria-pressed", String(SPACE_TOOLS[i].v === v)));
+}
+setTranslateSpace("world");
 
 const slice = new SliceView($("slice"), {
   onDragStart: () => { lockedPlane = currentPlane ?? null; undoHistory.holding = true; },
