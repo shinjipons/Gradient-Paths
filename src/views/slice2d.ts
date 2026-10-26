@@ -40,7 +40,7 @@ const WHEEL_NOTCH_MIN = 40;
 
 /**
  * 2D slice through the current space. The background is the slice itself
- * (pixels outside sRGB are hatched); the path is drawn projected onto it, and
+ * (pixels outside sRGB are black); the path is drawn projected onto it, and
  * endpoints / control points are draggable within the plane.
  */
 export class SliceView {
@@ -239,7 +239,8 @@ export class SliceView {
       out[2] = clamp01(rgb[2]) * 255;
       return true;
     };
-    const hatchAt = (i: number, j: number) => (((i + j) >> 2) % 2 === 0 ? 34 : 28);
+    /** Off the gamut: black, the same as the viewport around the slice. */
+    const OUTSIDE = 0;
 
     // Pass 1: one sample per pixel at its center.
     const inside = new Uint8Array(cols * rows);
@@ -254,7 +255,7 @@ export class SliceView {
           img.data[d + 1] = out[1];
           img.data[d + 2] = out[2];
         } else {
-          img.data[d] = img.data[d + 1] = img.data[d + 2] = hatchAt(i, j);
+          img.data[d] = img.data[d + 1] = img.data[d + 2] = OUTSIDE;
         }
         img.data[d + 3] = 255;
       }
@@ -274,13 +275,12 @@ export class SliceView {
           (j < rows - 1 && inside[k + cols] !== v);
         if (!edge) continue;
         let r = 0, gr = 0, b = 0;
-        const hatch = hatchAt(i, j);
         for (let m = 0; m < N; m++) {
           for (let n = 0; n < N; n++) {
             if (sample(i + (n + 0.5) / N, j + (m + 0.5) / N)) {
               r += out[0]; gr += out[1]; b += out[2];
             } else {
-              r += hatch; gr += hatch; b += hatch;
+              r += OUTSIDE; gr += OUTSIDE; b += OUTSIDE;
             }
           }
         }
