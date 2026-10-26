@@ -29,6 +29,8 @@ interface DrawInput {
 
 /** Background raster: at most this many columns, at least 2 screen px each. */
 const MAX_COLS = 360;
+/** In draft mode the raster is this many times coarser on each axis. */
+const DRAFT_STEP = 2;
 const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 40;
 /** Wheel deltas this big (pixel mode) are mouse notches, not trackpad scrolls. */
@@ -111,6 +113,17 @@ export class SliceView {
     return this.drag !== null;
   }
 
+  /**
+   * While true (a 3D drag that re-orients the slice every frame), the
+   * background is rasterized coarser and without edge supersampling, so it
+   * keeps up. Takes effect on the next update, which redraws at full quality
+   * once it is off.
+   */
+  private draft = false;
+  setDraft(on: boolean) {
+    this.draft = on;
+  }
+
   update(input: DrawInput) {
     this.input = input;
     this.draw();
@@ -159,7 +172,8 @@ export class SliceView {
   /** Rasterize the slice under the whole canvas, at the current pan and zoom. */
   private renderBackground(space: ColorSpace, pl: Plane, w: number, h: number) {
     if (!(w > 0 && h > 0)) return; // container not laid out yet
-    const cols = Math.max(2, Math.min(MAX_COLS, Math.ceil(w / 2)));
+    const step = this.draft ? DRAFT_STEP : 1;
+    const cols = Math.max(2, Math.min(MAX_COLS / step, Math.ceil(w / (2 * step))));
     const rows = Math.max(2, Math.round((cols * h) / w));
     const { s: fs, ox, oy } = this.size();
     const key = JSON.stringify(
@@ -214,9 +228,9 @@ export class SliceView {
     }
 
     // Pass 2: pixels on the gamut's edge are supersampled, so the boundary gets
-    // partial coverage instead of a staircase.
+    // partial coverage instead of a staircase. Drafts keep the staircase.
     const N = 4;
-    for (let j = 0; j < rows; j++) {
+    for (let j = 0; j < rows && !this.draft; j++) {
       for (let i = 0; i < cols; i++) {
         const k = j * cols + i;
         const v = inside[k];
