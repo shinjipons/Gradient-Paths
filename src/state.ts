@@ -1,6 +1,6 @@
 import { hexToRgb, rgbToHex, type Vec3 } from "./color/convert";
 import { spaceById, type ColorSpace } from "./color/spaces";
-import type { Easing, GamutMap, HueMode, PathMode, Spacing } from "./path/paths";
+import type { Easing, HueMode, PathMode, Spacing } from "./path/paths";
 
 export type SolidStyle = "surface" | "points" | "wire" | "none";
 
@@ -17,7 +17,6 @@ export interface AppState {
   stops: number;
   spacing: Spacing;
   easing: Easing;
-  gamut: GamutMap;
   solid: SolidStyle;
   opacity: number;
 }
@@ -34,7 +33,6 @@ export const DEFAULT_STATE: AppState = {
   stops: 11,
   spacing: "parameter",
   easing: "linear",
-  gamut: "chroma",
   solid: "surface",
   opacity: 0.5,
 };
@@ -63,7 +61,6 @@ export function serialize(s: AppState): string {
     n: String(s.stops),
     sp: s.spacing,
     e: s.easing,
-    g: s.gamut,
   });
   return q.toString();
 }
@@ -84,7 +81,6 @@ export function deserialize(hash: string): AppState {
   s.hueMode = pick("h", ["shorter", "longer", "increasing", "decreasing"], s.hueMode);
   s.spacing = pick("sp", ["parameter", "space", "perceptual"], s.spacing);
   s.easing = pick("e", ["linear", "ease-in", "ease-out", "ease-in-out", "smoother"], s.easing);
-  s.gamut = pick("g", ["clip", "chroma"], s.gamut);
   const p = q.get("p");
   if (p) {
     s.points = p

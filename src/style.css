@@ -206,9 +206,14 @@ select { width: 100%; }
 }
 /* Too narrow for six characters (many stops): show color only. */
 @container (max-width: 44px) { .stops div span { display: none; } }
+/* Out of gamut: the same black and white stripes as the path strip, over the whole swatch. */
 .stops div.oog-stop::after {
-  content: ""; position: absolute; inset: auto 0 0 0; height: 5px;
-  background: repeating-linear-gradient(45deg, #fff 0 2px, transparent 2px 4px); border-radius: 0 0 4px 4px; opacity: .8;
+  content: ""; position: absolute; inset: 0; border-radius: inherit; opacity: .9;
+  background: repeating-linear-gradient(90deg, #000 0 2px, #fff 2px 4px);
+}
+.stops div.oog-stop span {
+  position: relative; z-index: 1; padding: 1px 4px; border-radius: 3px;
+  background: rgba(0, 0, 0, .85); color: #fff;
 }
 .stops div:hover { outline: 2px solid #fff; outline-offset: 1px; }
 .stats { display: flex; flex-direction: column; gap: 4px; color: var(--text-muted); font-size: 12px; white-space: nowrap; }

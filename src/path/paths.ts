@@ -1,4 +1,4 @@
-import { clamp01, inUnitCube, rgbToHex, srgbToOklab, oklabToSrgb, type Vec3 } from "../color/convert";
+import { clamp01, inUnitCube, rgbToHex, srgbToOklab, type Vec3 } from "../color/convert";
 import { isRealColor, type ColorSpace } from "../color/spaces";
 import { add, cross, dist, dot, len, lerp, norm, perpendicular, rotate, scale, sub } from "./vec";
 
@@ -15,7 +15,6 @@ export type PathMode =
 export type HueMode = "shorter" | "longer" | "increasing" | "decreasing";
 export type Spacing = "parameter" | "space" | "perceptual";
 export type Easing = "linear" | "ease-in" | "ease-out" | "ease-in-out" | "smoother";
-export type GamutMap = "clip" | "chroma";
 
 export interface ModeInfo {
   id: PathMode;
@@ -303,19 +302,9 @@ export interface Sample {
   oklab: Vec3;
 }
 
-export function mapToGamut(rgb: Vec3, method: GamutMap): Vec3 {
-  if (inUnitCube(rgb, 0) || method === "clip") return rgb.map(clamp01) as Vec3;
-  const [L, a, b] = srgbToOklab(rgb);
-  if (!(L > 0)) return [0, 0, 0];
-  if (L >= 1) return [1, 1, 1];
-  let lo = 0;
-  let hi = 1;
-  for (let i = 0; i < 24; i++) {
-    const mid = (lo + hi) / 2;
-    if (inUnitCube(oklabToSrgb([L, a * mid, b * mid]), 0)) lo = mid;
-    else hi = mid;
-  }
-  return oklabToSrgb([L, a * lo, b * lo]).map(clamp01) as Vec3;
+/** Out-of-gamut colors are always clipped: each channel clamped to 0–1. */
+export function mapToGamut(rgb: Vec3): Vec3 {
+  return rgb.map(clamp01) as Vec3;
 }
 
 export interface Gradient {
@@ -331,14 +320,14 @@ export interface Gradient {
 export function computeGradient(
   space: ColorSpace,
   path: PathFn,
-  opts: { spacing: Spacing; easing: Easing; gamut: GamutMap; stops: number },
+  opts: { spacing: Spacing; easing: Easing; stops: number },
 ): Gradient {
   const sampleAt = (t: number): Sample => {
     const { embed, native } = path(t);
     const rgb = space.toRGB(native);
     const finite = rgb.every(Number.isFinite);
     const safe: Vec3 = finite ? rgb : [0, 0, 0];
-    const display = mapToGamut(safe, opts.gamut);
+    const display = mapToGamut(safe);
     return {
       t,
       embed,

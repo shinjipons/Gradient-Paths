@@ -11,7 +11,6 @@ import {
   ensurePoints,
   mapToGamut,
   modeInfo,
-  type GamutMap,
   type HueMode,
   type PathMode,
   type Spacing,
@@ -119,10 +118,6 @@ seg<Spacing>($("spacing-seg"), [
   { v: "perceptual", label: "Perceptual", title: "Evenly spaced by OKLab ΔE — every step looks equally big" },
 ], (v) => { state.spacing = v; render(); });
 
-seg<GamutMap>($("gamut-seg"), [
-  { v: "chroma", label: "Reduce chroma", title: "Keep lightness and hue, lower chroma until it fits sRGB" },
-  { v: "clip", label: "Clip", title: "Clamp each RGB channel to 0–1" },
-], (v) => { state.gamut = v; render(); });
 
 
 const bind = (id: string, apply: (v: number) => void) => {
@@ -325,7 +320,6 @@ function render(opts: { keepPlane?: boolean } = {}) {
   $("sampling-btn").textContent = `Spacing · ${spacingName}`;
   segSet($("spacing-seg"), state.spacing);
   $<HTMLSelectElement>("easing").value = state.easing;
-  segSet($("gamut-seg"), state.gamut);
   $<HTMLSelectElement>("solid").value = state.solid;
 
   // Control point list.
@@ -336,7 +330,7 @@ function render(opts: { keepPlane?: boolean } = {}) {
     const native = space.unembed(p);
     const rgb = space.toRGB(native);
     const ok = rgb.every((v) => v >= -1e-4 && v <= 1 + 1e-4);
-    const disp = rgbToHex(mapToGamut(rgb.every(Number.isFinite) ? rgb : [0, 0, 0], state.gamut));
+    const disp = rgbToHex(mapToGamut(rgb.every(Number.isFinite) ? rgb : [0, 0, 0]));
     const li = document.createElement("li");
     li.innerHTML = `<span class="n">${i + 1}</span><span class="sw${ok ? "" : " oog"}" style="background:${disp}"></span><code>${formatNative(native)}${ok ? "" : " · outside sRGB"}</code>`;
     if (info.points === "many" && used.length > 1) {
@@ -362,9 +356,10 @@ function render(opts: { keepPlane?: boolean } = {}) {
     const s = grad.at(x / (cols - 1));
     sctx.fillStyle = s.hex;
     sctx.fillRect(Math.floor((x * strip.width) / cols), 0, Math.ceil(strip.width / cols) + 1, strip.height);
+    // Out of gamut: black and white stripes over the strip's whole height, so the invalid stretch is unmissable.
     if (!s.inGamut) {
       sctx.fillStyle = (x >> 1) % 2 ? "rgba(255,255,255,.9)" : "rgba(0,0,0,.9)";
-      sctx.fillRect(Math.floor((x * strip.width) / cols), strip.height - 5 * dpr, Math.ceil(strip.width / cols) + 1, 5 * dpr);
+      sctx.fillRect(Math.floor((x * strip.width) / cols), 0, Math.ceil(strip.width / cols) + 1, strip.height);
     }
   }
 
@@ -374,11 +369,12 @@ function render(opts: { keepPlane?: boolean } = {}) {
   for (const st of grad.stops) {
     const d = document.createElement("div");
     d.style.background = st.hex;
-    d.title = `${st.hex}${st.inGamut ? "" : " (mapped from outside sRGB)"} — click to copy`;
+    d.title = `${st.hex}${st.inGamut ? "" : " (outside sRGB, clipped)"} — click to copy`;
     if (!st.inGamut) d.className = "oog-stop";
     const label = document.createElement("span");
     label.textContent = st.hex.slice(1).toUpperCase();
-    label.style.color = labelInk(st.display);
+    // An out-of-gamut stop's label sits on a dark chip over the stripes; see .oog-stop.
+    if (st.inGamut) label.style.color = labelInk(st.display);
     d.append(label);
     d.onclick = () => navigator.clipboard?.writeText(st.hex).catch(() => {});
     $("stop-swatches").append(d);

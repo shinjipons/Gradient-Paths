@@ -2,7 +2,7 @@ import type { AppState } from "./state";
 
 /** Fields that are part of the gradient; view preferences (solid style, opacity) are not undoable. */
 const KEYS = [
-  "a", "b", "space", "mode", "hueMode", "points", "arcBend", "arcRoll", "stops", "spacing", "easing", "gamut",
+  "a", "b", "space", "mode", "hueMode", "points", "arcBend", "arcRoll", "stops", "spacing", "easing",
 ] as const satisfies readonly (keyof AppState)[];
 
 type Snapshot = Pick<AppState, (typeof KEYS)[number]>;
