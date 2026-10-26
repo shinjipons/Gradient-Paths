@@ -1,5 +1,7 @@
+import "@fontsource-variable/inter";
 import { inject } from "@vercel/analytics";
 import { Object3D } from "three";
+import { Blend, ChartSpline, createElement, Orbit, Rainbow, Route, Slash, Spline, SplinePointer, type IconNode } from "lucide";
 import { clamp01, hexToRgb, oklabToSrgb, rgbToHex, srgbToOklab, type Vec3 } from "./color/convert";
 import { SPACES, spaceById } from "./color/spaces";
 import {
@@ -80,12 +82,28 @@ spaceSel.onchange = () => {
   render();
 };
 
-const modeSel = $<HTMLSelectElement>("mode");
-modeSel.innerHTML = MODES.map((m) => `<option value="${m.id}">${m.label}</option>`).join("");
-modeSel.onchange = () => {
-  state.mode = modeSel.value as PathMode;
-  render();
+// Path modes live in the 3D view's vertical toolbar, one icon button each.
+const MODE_ICONS: Record<PathMode, IconNode> = {
+  native: Blend,
+  line: Slash,
+  cylindrical: Orbit,
+  arc: Rainbow,
+  quadratic: Spline,
+  cubic: SplinePointer,
+  polyline: Route,
+  spline: ChartSpline,
 };
+const modeBtns = new Map<PathMode, HTMLButtonElement>();
+for (const m of MODES) {
+  const b = document.createElement("button");
+  b.className = "tool-btn";
+  b.title = `${m.label}: ${m.hint.replace(/`/g, "")}`;
+  b.setAttribute("aria-label", m.label);
+  b.append(createElement(MODE_ICONS[m.id], { width: 18, height: 18 }));
+  b.onclick = () => { state.mode = m.id; render(); };
+  modeBtns.set(m.id, b);
+  $("view3d-tools").append(b);
+}
 
 seg<HueMode>($("hue-seg"), [
   { v: "shorter", label: "Shorter" },
@@ -113,7 +131,6 @@ const bind = (id: string, apply: (v: number) => void) => {
 bind("bend", (v) => (state.arcBend = v));
 bind("roll", (v) => (state.arcRoll = v));
 bind("stops", (v) => (state.stops = v));
-bind("opacity", (v) => (state.opacity = v));
 $<HTMLSelectElement>("easing").onchange = (e) => { state.easing = (e.target as HTMLSelectElement).value as typeof state.easing; render(); };
 $<HTMLSelectElement>("solid").onchange = (e) => { state.solid = (e.target as HTMLSelectElement).value as SolidStyle; render(); };
 
@@ -207,17 +224,18 @@ const updateSliceInset = () => {
   const view = $("slice").closest(".view")!;
   const head = view.querySelector(".view-head")!.getBoundingClientRect();
   if (head.height > 0) top = head.bottom - box.top + 8;
-  // The speed chart is always open, so reserving all of it never resizes the plot.
+  // The charts are always open, so reserving all of the taller one never resizes the plot.
   let bottom = 0;
-  const speed = view.querySelector<HTMLElement>(".speed-panel")!;
-  if (getComputedStyle(speed).position === "absolute") {
-    bottom = box.bottom - speed.getBoundingClientRect().top + 8;
+  for (const chart of view.querySelectorAll<HTMLElement>(".pinned-chart")) {
+    if (getComputedStyle(chart).position === "absolute") {
+      bottom = Math.max(bottom, box.bottom - chart.getBoundingClientRect().top + 8);
+    }
   }
   slice.setInsets(Math.max(0, top), Math.max(0, bottom));
 };
 const insetObserver = new ResizeObserver(updateSliceInset);
 insetObserver.observe($("slice"));
-insetObserver.observe(document.querySelector(".speed-panel")!);
+for (const chart of $("slice").closest(".view")!.querySelectorAll(".pinned-chart")) insetObserver.observe(chart);
 
 $("reset-slice").onclick = () => slice.resetView();
 
@@ -262,9 +280,8 @@ function render(opts: { keepPlane?: boolean } = {}) {
   }
   spaceSel.value = space.id;
   spaceSel.title = `${space.label} — ${space.blurb}`;
-  $("space-blurb").textContent = space.blurb;
-  modeSel.value = state.mode;
-  $("mode-hint").innerHTML = info.hint.replace(/`([^`]+)`/g, "<code>$1</code>");
+  for (const [id, b] of modeBtns) b.setAttribute("aria-pressed", String(id === state.mode));
+  $("mode-title").textContent = info.label;
   const hueApplies = !!info.usesHue && (state.mode === "cylindrical" || space.hueIndex >= 0);
   $("hue-field").hidden = !info.usesHue;
   segSet($("hue-seg"), state.hueMode, !hueApplies);
@@ -278,8 +295,6 @@ function render(opts: { keepPlane?: boolean } = {}) {
   $<HTMLSelectElement>("easing").value = state.easing;
   segSet($("gamut-seg"), state.gamut);
   $<HTMLSelectElement>("solid").value = state.solid;
-  setRange("opacity", state.opacity, "");
-  $<HTMLInputElement>("opacity").hidden = state.solid !== "surface";
 
   // Control point list.
   $("points-field").hidden = info.points === 0;
@@ -335,20 +350,6 @@ function render(opts: { keepPlane?: boolean } = {}) {
     d.append(label);
     d.onclick = () => navigator.clipboard?.writeText(st.hex).catch(() => {});
     $("stop-swatches").append(d);
-  }
-
-  // Browser's own interpolation, for comparison.
-  const native = $("native");
-  if (space.css) {
-    const hue = space.hueIndex >= 0 ? ` ${state.hueMode} hue` : "";
-    const g = `linear-gradient(to right in ${space.css}${hue}, ${aHex}, ${bHex})`;
-    native.style.background = CSS.supports("background-image", g) ? g : "none";
-    $("native-label").textContent = `CSS in ${space.css}`;
-    native.title = g;
-  } else {
-    native.style.background = "repeating-linear-gradient(45deg, #1f1f1d 0 6px, #191918 6px 12px)";
-    $("native-label").textContent = "No CSS space";
-    native.title = `${space.label} has no CSS interpolation space`;
   }
 
   const n = grad.stops.length;
@@ -417,7 +418,7 @@ function render(opts: { keepPlane?: boolean } = {}) {
   });
   const top = niceMax(maxS * 1.15);
   chartSpeed.update({
-    series: [{ name: "ΔE / 1%", color: "#3987e5", values: [speed[0], ...speed], format: (i) => (speed[Math.max(0, i - 1)]).toFixed(2) }],
+    series: [{ name: "ΔE / 1%", color: getComputedStyle(document.documentElement).getPropertyValue("--accent").trim(), values: [speed[0], ...speed], format: (i) => (speed[Math.max(0, i - 1)]).toFixed(2) }],
     band,
     yMin: 0,
     yMax: top,
@@ -460,6 +461,8 @@ function niceMax(x: number): number {
 function setRange(id: string, v: number, text: string) {
   const el = $<HTMLInputElement>(id);
   if (document.activeElement !== el) el.value = String(v);
+  const [lo, hi] = [Number(el.min), Number(el.max)];
+  el.parentElement!.style.setProperty("--p", `${((v - lo) / (hi - lo)) * 100}%`);
   const out = document.getElementById(`${id}-out`);
   if (out) out.textContent = text;
 }

@@ -134,8 +134,8 @@ function ctrlOrCmd(e: MouseEvent | WheelEvent): boolean {
 
 /**
  * Mode 1.b — classic 3-button navigation. Every movement is on the middle
- * button: drag to orbit, Ctrl/Cmd+drag to dolly, Shift+drag to truck. The wheel
- * dollies, through the same pivot-under-cursor path.
+ * button: drag to truck (pan), Ctrl/Cmd+drag to dolly, Shift+drag to orbit. The
+ * wheel dollies, through the same pivot-under-cursor path.
  *
  * A two-button mouse has no middle button, so the right button is one: the
  * same three movements under the same modifiers, handed to the same code. The
@@ -270,7 +270,8 @@ export class Navigation {
   private onPointerDown = (e: PointerEvent): void => {
     if (e.button !== 1 || !this.enabled) return;
     e.preventDefault();
-    this.startDrag(ctrlOrCmd(e) ? "dolly" : e.shiftKey ? "truck" : "orbit", e);
+    // The unmodified middle drag pans; Shift hands it to orbit, which the right button does unmodified.
+    this.startDrag(ctrlOrCmd(e) ? "dolly" : e.shiftKey ? "orbit" : "truck", e);
   };
 
   /**

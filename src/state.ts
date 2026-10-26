@@ -36,7 +36,7 @@ export const DEFAULT_STATE: AppState = {
   easing: "linear",
   gamut: "chroma",
   solid: "surface",
-  opacity: 0.35,
+  opacity: 0.5,
 };
 
 /** Re-express control points when the space changes, via (unclamped) sRGB. */
