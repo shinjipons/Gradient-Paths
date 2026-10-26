@@ -60,8 +60,8 @@
         waypoints, or a smooth spline.
       </p>
       <p>
-        Stops can be spaced evenly by perceived color difference (OKLab ΔE), out-of-gamut colors are mapped by reducing
-        chroma, and the result is exported as a CSS linear-gradient. Charts show each channel and the perceptual speed
+        Stops can be spaced evenly by perceived color difference (OKLab ΔE), out-of-gamut colors are clipped to sRGB and
+        flagged, and the result is exported as a CSS linear-gradient. Charts show each channel and the perceptual speed
         along the gradient, next to the browser's own CSS interpolation for comparison.
       </p>
     </section>
@@ -113,10 +113,6 @@
                     <option value="smoother">Smootherstep</option>
                   </select>
                 </label>
-                <div class="field">
-                  <span>Out-of-gamut colors</span>
-                  <div class="seg small" id="gamut-seg"></div>
-                </div>
               </div>
             </div>
           </div>
@@ -145,9 +141,8 @@
               <!-- Options of the active path mode, over the 3D view's bottom-left corner. -->
               <section class="mode-panel" aria-label="Path options">
                 <h3 id="mode-title"></h3>
-                <div class="field" id="hue-field">
-                  <span>Hue direction</span>
-                  <div class="seg small" id="hue-seg"></div>
+                <div id="hue-field">
+                  <div class="seg small" id="hue-seg" role="group" aria-label="Hue direction"></div>
                 </div>
                 <div id="arc-fields">
                   <label class="slider">
@@ -167,7 +162,6 @@
                     <button id="add-point" class="text-btn">+ Add</button>
                   </div>
                   <ul id="points" class="points"></ul>
-                  <p class="hint">Drag the numbered squares in the slice view. In waypoint modes, double-click the slice to add one.</p>
                 </div>
               </section>
               <div class="viewport" id="view3d">

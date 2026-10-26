@@ -98,6 +98,9 @@ body { margin: 0; background: var(--bg); }
   --panel-radius: var(--radius); --slider-radius: 6px;
 }
 .mode-panel #arc-fields { display: flex; flex-direction: column; gap: 6px; margin: 12px 0 0; }
+/* Stacked like the arc's sliders: no sub-label, 12px under the title, 6px apart. */
+.mode-panel #hue-field { margin: 12px 0 0; }
+.mode-panel .points { margin-top: 6px; gap: 6px; }
 .mode-panel h3 { margin: 0 0 6px; font-size: 13px; line-height: 1; font-weight: 600; }
 .mode-panel > :last-child, .mode-panel [hidden] + :last-child { margin-bottom: 0; }
 .pop-panel .seg button, .pop-panel select, .pop-panel .points li,
@@ -109,14 +112,14 @@ body { margin: 0; background: var(--bg); }
   border-radius: 8px; padding: 4px 5px;
 }
 .tag { font-weight: 700; color: var(--text-muted); font-size: 11px; }
-/* Circular, white-ringed, like the A/B handles in the views. */
+/* Circular, black-ringed, like the A/B handles in the views. */
 .swatch-field input[type="color"] {
   width: 20px; height: 20px; border: 0; padding: 0; background: none; cursor: pointer; flex: none;
   border-radius: 50%;
 }
 .swatch-field input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
-.swatch-field input[type="color"]::-webkit-color-swatch { border-radius: 50%; border: 2px solid #fff; }
-.swatch-field input[type="color"]::-moz-color-swatch { border-radius: 50%; border: 2px solid #fff; }
+.swatch-field input[type="color"]::-webkit-color-swatch { border-radius: 50%; border: 2px solid #000; }
+.swatch-field input[type="color"]::-moz-color-swatch { border-radius: 50%; border: 2px solid #000; }
 .swatch-field input[type="text"] {
   width: 100%; min-width: 0; background: none; border: 0; color: var(--text-primary);
   font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; text-transform: lowercase; padding: 0;
@@ -131,7 +134,12 @@ body { margin: 0; background: var(--bg); }
   font: inherit; white-space: nowrap;
 }
 .seg.small button { padding: 4px 7px; font-size: 12px; }
-.mode-panel .seg { flex-direction: column; }
+.mode-panel .seg { flex-direction: column; gap: 6px; }
+/* As tall as the panel's sliders, labeled like them. */
+.mode-panel .seg button {
+  box-sizing: border-box; height: 32px; padding: 0 10px; border-radius: var(--slider-radius);
+  font-size: 13px; font-weight: 600; color: var(--text-primary);
+}
 .seg button:hover { color: var(--text-primary); }
 .seg button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .seg button:disabled { opacity: .35; cursor: default; }
@@ -172,7 +180,6 @@ select { width: 100%; }
 }
 .points li .n { width: 16px; color: var(--text-muted); font-weight: 600; }
 .points li .sw { width: 18px; height: 18px; border-radius: 4px; border: 1px solid rgba(255,255,255,.2); }
-.points li .sw.oog { background-image: repeating-linear-gradient(45deg, transparent 0 3px, rgba(0,0,0,.5) 3px 5px) !important; }
 .points li code { flex: 1; color: var(--text-secondary); font-size: 11px; }
 .points li button { background: none; border: 0; color: var(--text-muted); cursor: pointer; font-size: 14px; }
 .points li button:hover { color: var(--text-primary); }
@@ -206,9 +213,14 @@ select { width: 100%; }
 }
 /* Too narrow for six characters (many stops): show color only. */
 @container (max-width: 44px) { .stops div span { display: none; } }
+/* Out of gamut: the same black and white stripes as the path strip, over the whole swatch. */
 .stops div.oog-stop::after {
-  content: ""; position: absolute; inset: auto 0 0 0; height: 5px;
-  background: repeating-linear-gradient(45deg, #fff 0 2px, transparent 2px 4px); border-radius: 0 0 4px 4px; opacity: .8;
+  content: ""; position: absolute; inset: 0; border-radius: inherit; opacity: .9;
+  background: repeating-linear-gradient(90deg, #000 0 2px, #fff 2px 4px);
+}
+.stops div.oog-stop span {
+  position: relative; z-index: 1; padding: 1px 4px; border-radius: 3px;
+  background: rgba(0, 0, 0, .85); color: #fff;
 }
 .stops div:hover { outline: 2px solid #fff; outline-offset: 1px; }
 .stats { display: flex; flex-direction: column; gap: 4px; color: var(--text-muted); font-size: 12px; white-space: nowrap; }

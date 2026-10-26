@@ -53,7 +53,6 @@ const END_GEO = new SphereGeometry(1, 24, 16);
 const POINT_GEO = new OctahedronGeometry(1);
 /** Dark outline, back faces only, slightly larger than what it outlines. */
 const CASING_MAT = new MeshBasicMaterial({ color: 0x000000, side: 1 /* BackSide */ });
-const RING_MAT = new MeshBasicMaterial({ color: 0xffffff, side: 1 /* BackSide */ });
 const POINT_MAT = new MeshBasicMaterial({ color: 0xffffff });
 
 type Dot = Mesh<BufferGeometry, MeshBasicMaterial>;
@@ -502,7 +501,7 @@ export class View3D {
     ] as const) {
       const e = (this.ends[key] ??= {
         dot: dot(new Mesh(END_GEO, new MeshBasicMaterial()), 9),
-        ring: dot(new Mesh(END_GEO, RING_MAT), 11),
+        ring: dot(new Mesh(END_GEO, CASING_MAT), 11),
         label: lifted(label(key.toUpperCase(), new Vector3(), 13, true), 13),
       });
       e.dot.material.color.setStyle(col, "srgb");
