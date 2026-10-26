@@ -30,7 +30,7 @@ interface DrawInput {
 /** Background raster: at most this many columns, at least 2 screen px each. */
 const MAX_COLS = 360;
 /** In draft mode the raster is this many times coarser on each axis. */
-const DRAFT_STEP = 2;
+const DRAFT_STEP = 3;
 const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 40;
 /** Wheel deltas this big (pixel mode) are mouse notches, not trackpad scrolls. */
