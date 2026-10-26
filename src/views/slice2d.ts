@@ -31,6 +31,8 @@ interface DrawInput {
 const MAX_COLS = 360;
 /** In draft mode the raster is this many times coarser on each axis. */
 const DRAFT_STEP = 3;
+/** A pan or zoom that pauses this long gets a fresh raster. */
+const SETTLE_MS = 150;
 const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 40;
 /** Wheel deltas this big (pixel mode) are mouse notches, not trackpad scrolls. */
@@ -45,7 +47,14 @@ export class SliceView {
   readonly canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
   private bg = document.createElement("canvas");
+  /** What the raster shows (space, plane, size), and the view transform it was made at. */
   private bgKey = "";
+  private bgViewKey = "";
+  private bgView = { zoom: 1, tx: 0, ty: 0 };
+  /** True during a pan or zoom gesture, until it pauses for SETTLE_MS. */
+  private viewMoving = false;
+  private settleTimer = 0;
+  private drawRaf = 0;
   private input: DrawInput | null = null;
   /** `sx`/`sy`: where the drag began; `x`/`y`: the latest pointer position. */
   private drag: { handle: Handle; start: Vec3; sx: number; sy: number; x: number; y: number } | null = null;
@@ -95,7 +104,26 @@ export class SliceView {
     this.tx = x - (x - this.tx) * f;
     this.ty = y - (y - this.ty) * f;
     this.zoom = k;
-    this.draw();
+    this.viewChanged();
+  }
+
+  /**
+   * A pan or zoom step. Redraws at most once a frame, moving the existing
+   * raster rather than making a new one: rasterizing converts every pixel's
+   * color, which outside sRGB costs tens of milliseconds. Once the gesture
+   * pauses, the slice is rasterized again at the new view.
+   */
+  private viewChanged() {
+    this.viewMoving = true;
+    clearTimeout(this.settleTimer);
+    this.settleTimer = window.setTimeout(() => {
+      this.viewMoving = false;
+      this.draw();
+    }, SETTLE_MS);
+    this.drawRaf ||= requestAnimationFrame(() => {
+      this.drawRaf = 0;
+      this.draw();
+    });
   }
 
   /** Pixels at the top and bottom covered by floating UI; the plot centers between them. */
@@ -169,20 +197,25 @@ export class SliceView {
 
   // --- background ------------------------------------------------------------
 
-  /** Rasterize the slice under the whole canvas, at the current pan and zoom. */
+  /**
+   * Rasterize the slice under the whole canvas, at the current pan and zoom.
+   * While the view is moving, a raster of the same slice is kept as it is:
+   * draw() moves and scales it to the new view instead.
+   */
   private renderBackground(space: ColorSpace, pl: Plane, w: number, h: number) {
     if (!(w > 0 && h > 0)) return; // container not laid out yet
     const step = this.draft ? DRAFT_STEP : 1;
     const cols = Math.max(2, Math.min(MAX_COLS / step, Math.ceil(w / (2 * step))));
     const rows = Math.max(2, Math.round((cols * h) / w));
     const { s: fs, ox, oy } = this.size();
-    const key = JSON.stringify(
-      [space.id, pl.origin, pl.u, pl.v, pl.view, cols, rows, this.zoom, this.tx, this.ty, fs, ox, oy]
-        .flat(2)
-        .map((x) => (typeof x === "number" ? x.toFixed(4) : x)),
-    );
-    if (key === this.bgKey) return;
+    const fixed = (xs: unknown[]) =>
+      JSON.stringify(xs.flat(2).map((x) => (typeof x === "number" ? x.toFixed(4) : x)));
+    const key = fixed([space.id, pl.origin, pl.u, pl.v, pl.view, cols, rows, fs, ox, oy]);
+    const view = fixed([this.zoom, this.tx, this.ty]);
+    if (key === this.bgKey && (this.viewMoving || view === this.bgViewKey)) return;
     this.bgKey = key;
+    this.bgViewKey = view;
+    this.bgView = { zoom: this.zoom, tx: this.tx, ty: this.ty };
     this.bg.width = cols;
     this.bg.height = rows;
     const g = this.bg.getContext("2d")!;
@@ -287,7 +320,10 @@ export class SliceView {
 
     this.renderBackground(inp.space, pl, w, h);
     ctx.imageSmoothingEnabled = true;
-    ctx.drawImage(this.bg, 0, 0, w, h);
+    // The raster covers the canvas as the view was when it was made; map that view onto this one.
+    // Right after a raster this is the identity.
+    const k = this.zoom / this.bgView.zoom;
+    ctx.drawImage(this.bg, this.tx - this.bgView.tx * k, this.ty - this.bgView.ty * k, w * k, h * k);
 
     // The plane's bounds, dotted in the same color as the plane outline in 3D.
     {
@@ -471,7 +507,7 @@ export class SliceView {
       this.tx += x - this.pan.x;
       this.ty += y - this.pan.y;
       this.pan = { x, y };
-      this.draw();
+      this.viewChanged();
       return;
     }
     if (!this.drag) {
@@ -546,7 +582,7 @@ export class SliceView {
     else {
       this.tx -= dx;
       this.ty -= dy;
-      this.draw();
+      this.viewChanged();
     }
   };
 
