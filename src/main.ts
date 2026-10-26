@@ -17,6 +17,7 @@ import {
   type Spacing,
 } from "./path/paths";
 import { add, dist, scale } from "./path/vec";
+import { UndoHistory } from "./history";
 import { convertPoints, deserialize, serialize, type SolidStyle } from "./state";
 import { LineChart, type Series } from "./views/charts";
 import { makePlane, type Plane } from "./views/plane";
@@ -188,17 +189,46 @@ document.addEventListener("keydown", (e) => {
 
 // --- views -------------------------------------------------------------------
 
+// --- undo / redo -------------------------------------------------------------
+
+const undoBtn = $<HTMLButtonElement>("undo");
+const redoBtn = $<HTMLButtonElement>("redo");
+const undoHistory = new UndoHistory(() => {
+  undoBtn.disabled = !undoHistory.canUndo;
+  redoBtn.disabled = !undoHistory.canRedo;
+});
+function stepHistory(redo: boolean) {
+  if (!(redo ? undoHistory.redo(state) : undoHistory.undo(state))) return;
+  // A focused range input is skipped when syncing controls; let the restored value show.
+  const f = document.activeElement;
+  if (f instanceof HTMLInputElement && f.type === "range") f.blur();
+  space = spaceById(state.space);
+  render();
+}
+undoBtn.onclick = () => stepHistory(false);
+redoBtn.onclick = () => stepHistory(true);
+document.addEventListener("keydown", (e) => {
+  if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
+  const k = e.key.toLowerCase();
+  if (k !== "z" && k !== "y") return;
+  // Text fields keep their own undo.
+  const t = e.target as HTMLElement;
+  if (t.tagName === "TEXTAREA" || (t.tagName === "INPUT" && (t as HTMLInputElement).type === "text")) return;
+  e.preventDefault();
+  stepHistory(k === "y" || e.shiftKey);
+});
+
 const view3d = new View3D($("view3d"), {
-  onDragStart: () => {},
-  onDragEnd: () => render(),
+  onDragStart: () => (undoHistory.holding = true),
+  onDragEnd: () => { undoHistory.holding = false; render(); },
   onEndpoint: (which, rgb) => { state[which] = rgb; scheduleRender(); },
   onPoint: (i, e) => { state.points[i] = e; scheduleRender(); },
 });
 $("reset-cam").onclick = () => view3d.reset();
 
 const slice = new SliceView($("slice"), {
-  onDragStart: () => (lockedPlane = currentPlane ?? null),
-  onDragEnd: () => render({ keepPlane: true }),
+  onDragStart: () => { lockedPlane = currentPlane ?? null; undoHistory.holding = true; },
+  onDragEnd: () => { undoHistory.holding = false; render({ keepPlane: true }); },
   onEndpoint: (which, rgb) => { state[which] = rgb; scheduleRender(); },
   onPoint: (i, e) => { state.points[i] = e; scheduleRender(); },
   onAddPoint: (e) => {
@@ -428,6 +458,7 @@ function render(opts: { keepPlane?: boolean } = {}) {
   });
 
   history.replaceState(null, "", `#${serialize(state)}`);
+  undoHistory.record(state);
 }
 
 function fmtChannel(v: number, ch: { scale?: number; unit?: string }): string {
