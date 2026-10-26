@@ -219,7 +219,9 @@ document.addEventListener("keydown", (e) => {
 });
 
 const view3d = new View3D($("view3d"), {
-  onDragStart: () => (undoHistory.holding = true),
+  // Hold the slice still while dragging, as in 2D: re-orienting it re-rasterizes the slice every frame.
+  // Releasing renders without keepPlane, so it re-orients once there.
+  onDragStart: () => { lockedPlane = currentPlane ?? null; undoHistory.holding = true; },
   onDragEnd: () => { undoHistory.holding = false; render(); },
   onEndpoint: (which, rgb) => { state[which] = rgb; scheduleRender(); },
   onPoint: (i, e) => { state.points[i] = e; scheduleRender(); },
@@ -281,7 +283,7 @@ let lastDense: Vec3[] = [];
 
 let raf = 0;
 function scheduleRender() {
-  // Only 2D drags and resizes come through here; neither should re-orient the slice.
+  // Only drags and resizes come through here; none should re-orient the slice.
   if (!raf) raf = requestAnimationFrame(() => { raf = 0; render({ keepPlane: true }); });
 }
 
