@@ -35,6 +35,8 @@ const DRAFT_STEP = 3;
 const SETTLE_MS = 150;
 const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 40;
+/** Ctrl/Cmd + right-drag zoom, matching the 3D dolly: e-fold per this many pixels. Drag down zooms in. */
+const DOLLY_PIXELS = 220;
 /** Wheel deltas this big (pixel mode) are mouse notches, not trackpad scrolls. */
 const WHEEL_NOTCH_MIN = 40;
 
@@ -59,6 +61,8 @@ export class SliceView {
   /** `sx`/`sy`: where the drag began; `x`/`y`: the latest pointer position. */
   private drag: { handle: Handle; start: Vec3; sx: number; sy: number; x: number; y: number } | null = null;
   private pan: { x: number; y: number } | null = null;
+  /** Ctrl/Cmd + right drag: zoom about the press point. `lastY` is the previous pointer y. */
+  private zoomDrag: { x: number; y: number; lastY: number } | null = null;
   private hover: Handle | null = null;
   /** View transform over the fitted layout: screen = fitted * zoom + offset. */
   private zoom = 1;
@@ -484,6 +488,13 @@ export class SliceView {
     if (!this.input) return;
     const [x, y] = this.local(e);
     const h = e.button === 0 ? this.pick(x, y) : null;
+    // Ctrl/Cmd + right drag zooms, same gesture as the 3D dolly. The anchor stays the press point.
+    if (e.button === 2 && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      this.zoomDrag = { x, y, lastY: y };
+      this.canvas.setPointerCapture(e.pointerId);
+      return;
+    }
     // Middle or right drag pans anywhere; left drag pans on empty canvas.
     if (!h && (e.button === 0 || e.button === 1 || e.button === 2)) {
       e.preventDefault();
@@ -503,6 +514,12 @@ export class SliceView {
   private onMove = (e: PointerEvent) => {
     if (!this.input) return;
     const [x, y] = this.local(e);
+    if (this.zoomDrag) {
+      const dy = y - this.zoomDrag.lastY;
+      this.zoomDrag.lastY = y;
+      if (dy !== 0) this.zoomAt(this.zoomDrag.x, this.zoomDrag.y, Math.exp(dy / DOLLY_PIXELS));
+      return;
+    }
     if (this.pan) {
       this.tx += x - this.pan.x;
       this.ty += y - this.pan.y;
@@ -556,6 +573,10 @@ export class SliceView {
   }
 
   private onUp = () => {
+    if (this.zoomDrag) {
+      this.zoomDrag = null;
+      return;
+    }
     if (this.pan) {
       this.pan = null;
       this.canvas.style.cursor = "default";
