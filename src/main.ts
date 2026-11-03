@@ -192,25 +192,6 @@ $("copy-css").onclick = async () => {
   setTimeout(() => (btn.textContent = "Copy CSS"), 1200);
 };
 
-// --- top bar popovers ----------------------------------------------------------
-
-const popButtons = [...document.querySelectorAll<HTMLButtonElement>(".pop-btn")];
-const closePops = (except?: HTMLButtonElement) =>
-  popButtons.forEach((b) => b !== except && b.setAttribute("aria-expanded", "false"));
-popButtons.forEach((btn) => {
-  btn.onclick = () => {
-    const open = btn.getAttribute("aria-expanded") !== "true";
-    closePops(btn);
-    btn.setAttribute("aria-expanded", String(open));
-  };
-});
-document.addEventListener("pointerdown", (e) => {
-  if (!(e.target as Element).closest(".pop")) closePops();
-});
-document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape") closePops();
-});
-
 // --- views -------------------------------------------------------------------
 
 // --- undo / redo -------------------------------------------------------------
@@ -373,8 +354,6 @@ function render(opts: { keepPlane?: boolean } = {}) {
   setRange("bend", state.arcBend, `${Math.round(state.arcBend * 100)}%`);
   setRange("roll", state.arcRoll, `${Math.round(state.arcRoll)}°`);
   setRange("stops", state.stops, String(state.stops));
-  const spacingName = { parameter: "even t", space: "even distance", perceptual: "perceptual" }[state.spacing];
-  $("sampling-btn").textContent = `Spacing · ${spacingName}`;
   segSet($("spacing-seg"), state.spacing);
   $<HTMLSelectElement>("easing").value = state.easing;
   $<HTMLSelectElement>("solid").value = state.solid;
