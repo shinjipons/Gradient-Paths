@@ -89,14 +89,6 @@
               </label>
             </div>
           </div>
-  
-          <div class="group" role="group" aria-label="Stops">
-            <label class="slider stops-slider">
-              <span class="slider-label">Stops</span>
-              <output id="stops-out"></output>
-              <input type="range" id="stops" min="2" max="32" step="1" />
-            </label>
-          </div>
         </div>
         <button id="copy-css" class="primary-btn" title="Copy the gradient's stops as a CSS background">Copy CSS</button>
       </header>
@@ -121,8 +113,13 @@
               <div class="vtoolbar" id="view3d-tools" role="toolbar" aria-orientation="vertical" aria-label="3D tools"></div>
               <!-- A second strip down the right edge, below the axis widget. -->
               <div class="vtoolbar right" id="view3d-tools-right" role="toolbar" aria-orientation="vertical" aria-label="3D view tools"></div>
-              <!-- Spacing and easing, over the 3D view's bottom-right corner. Same chrome as the path options. -->
+              <!-- Stops, spacing and easing, over the 3D view's bottom-right corner. Same chrome as the path options. -->
               <section class="mode-panel sampling-panel" aria-label="Sampling">
+                <label class="slider">
+                  <span class="slider-label">Stops</span>
+                  <output id="stops-out"></output>
+                  <input type="range" id="stops" min="2" max="32" step="1" />
+                </label>
                 <h3>Spacing</h3>
                 <div class="seg small" id="spacing-seg" role="group" aria-label="Spacing"></div>
                 <h3>Easing</h3>

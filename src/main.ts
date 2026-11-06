@@ -128,8 +128,8 @@ seg<HueMode>($("hue-seg"), [
 ], (v) => { state.hueMode = v; render(); });
 
 seg<Spacing>($("spacing-seg"), [
-  { v: "parameter", label: "Curve t", title: "Evenly spaced in the curve's own parameter" },
-  { v: "space", label: "Distance", title: "Evenly spaced by distance in the drawn space" },
+  { v: "parameter", label: "Curve parameter", title: "Evenly spaced in the curve's own parameter" },
+  { v: "space", label: "Equal distance", title: "Evenly spaced by distance in the drawn space" },
   { v: "perceptual", label: "Perceptual", title: "Evenly spaced by OKLab ΔE — every step looks equally big" },
 ], (v) => { state.spacing = v; render(); });
 
@@ -348,7 +348,8 @@ function render(opts: { keepPlane?: boolean } = {}) {
   for (const [id, b] of modeBtns) b.setAttribute("aria-pressed", String(id === state.mode));
   $("mode-title").textContent = info.label;
   const hueApplies = !!info.usesHue && (state.mode === "cylindrical" || space.hueIndex >= 0);
-  $("hue-field").hidden = !info.usesHue;
+  // Hide when hue options don't apply (e.g. native in a Cartesian space): title-only panel, same as straight line.
+  $("hue-field").hidden = !hueApplies;
   segSet($("hue-seg"), state.hueMode, !hueApplies);
   $("arc-fields").hidden = state.mode !== "arc";
   setRange("bend", state.arcBend, `${Math.round(state.arcBend * 100)}%`);
