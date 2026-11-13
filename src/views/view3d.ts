@@ -44,6 +44,7 @@ import { CameraRig, type SnapView } from "../viewport/cameras";
 import { ViewControls } from "../viewport/controls";
 import { Navigation } from "../viewport/navigation";
 import { PLANE_EDGE, unproject, type Plane } from "./plane";
+import { CANVAS_SANS } from "./fonts";
 
 /** Embed space is ~[-1,1]³; this is its size in world units. */
 const S = 2.2;
@@ -558,6 +559,27 @@ export class View3D {
     this.controls.onUpChanged();
   }
 
+  /**
+   * Drop every cached text sprite (axis labels, A/B tags, point badges) so the
+   * next setGamut and setPath draw them again, e.g. once the web font loads.
+   */
+  refreshText() {
+    this.gamutKey = "";
+    const drop = (sp: Sprite) => {
+      sp.removeFromParent();
+      sp.material.map?.dispose();
+      sp.material.dispose();
+    };
+    for (const key of ["a", "b"] as const) {
+      const e = this.ends[key];
+      if (!e) continue;
+      drop(e.label);
+      e.label = lifted(label(key.toUpperCase(), new Vector3(), 13, true), 13);
+    }
+    this.pointHandles.forEach(drop);
+    this.pointHandles = [];
+  }
+
   // --- gamut solid -----------------------------------------------------------
 
   setGamut(space: ColorSpace, style: SolidStyle, opacity: number) {
@@ -974,7 +996,7 @@ function pointBadge(n: number): Sprite {
   ctx.strokeStyle = "#fff";
   ctx.strokeRect(c - r * k, c - r * k, 2 * r * k, 2 * r * k);
   ctx.fillStyle = "#fff";
-  ctx.font = `600 ${9 * k}px ui-sans-serif, system-ui`;
+  ctx.font = `600 ${9 * k}px ${CANVAS_SANS}`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillText(String(n), c, c + 0.5 * k);
@@ -996,7 +1018,7 @@ function label(text: string, pos: Vector3, px = 12, anchorBottom = false): Sprit
   const cv = document.createElement("canvas");
   const ctx = cv.getContext("2d")!;
   const fs = 48;
-  const font = `600 ${fs}px ui-sans-serif, system-ui, sans-serif`;
+  const font = `600 ${fs}px ${CANVAS_SANS}`;
   ctx.font = font;
   const w = Math.ceil(ctx.measureText(text).width) + 24;
   cv.width = w;

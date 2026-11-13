@@ -1,3 +1,5 @@
+import { CANVAS_SANS } from "./fonts";
+
 export interface Series {
   name: string;
   color: string;
@@ -99,7 +101,7 @@ export class LineChart {
     const Y = (v: number) => y1 - ((v - inp.yMin) / (inp.yMax - inp.yMin || 1)) * (y1 - y0);
 
     // Grid + y ticks.
-    ctx.font = "10px ui-sans-serif, system-ui";
+    ctx.font = `10px ${CANVAS_SANS}`;
     ctx.textAlign = "right";
     ctx.textBaseline = "middle";
     ctx.lineWidth = 1;
