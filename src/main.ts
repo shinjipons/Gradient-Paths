@@ -18,7 +18,7 @@ import {
   SquareDashed,
   type IconNode,
 } from "lucide";
-import { clamp01, hexToRgb, oklabToSrgb, rgbToHex, srgbToOklab, type Vec3 } from "./color/convert";
+import { clamp01, hexToRgb, oklabToSrgb, rgbToHex, srgbToLinear, srgbToOklab, type Vec3 } from "./color/convert";
 import { SPACES, spaceById } from "./color/spaces";
 import {
   MODES,
@@ -37,6 +37,7 @@ import { convertPoints, deserialize, serialize, type SolidStyle } from "./state"
 import { LineChart, type Series } from "./views/charts";
 import { makePlane, type Plane } from "./views/plane";
 import { ColorPicker } from "./views/colorpicker";
+import { selectAllOnFocus } from "./views/inputs";
 import { whenCanvasFontReady } from "./views/fonts";
 import { SliceView } from "./views/slice2d";
 import { View3D, type TranslateSpace } from "./views/view3d";
@@ -151,10 +152,13 @@ $<HTMLSelectElement>("solid").onchange = (e) => { state.solid = (e.target as HTM
 for (const which of ["a", "b"] as const) {
   $(`${which}-color`).onclick = () => picker.toggle(which);
   const text = $<HTMLInputElement>(`${which}-hex`);
+  selectAllOnFocus(text);
   text.onchange = () => {
     const rgb = hexToRgb(text.value);
     if (rgb) state[which] = rgb;
     render();
+    // The render skips the focused field: show the stored color in full ("#" and all), or the old one if the text was not a color.
+    text.value = rgbToHex(state[which]);
   };
 }
 
@@ -411,24 +415,9 @@ function render(opts: { keepPlane?: boolean } = {}) {
 
   // Control point list.
   $("points-field").hidden = info.points === 0;
+  // Only modes that take any number of points have the Add button.
   $("add-point").hidden = info.points !== "many";
-  $("points").innerHTML = "";
-  used.forEach((p, i) => {
-    const native = space.unembed(p);
-    const rgb = space.toRGB(native);
-    // Control points steer the curve and may sit outside sRGB; only the path and its stops are flagged for it.
-    const disp = rgbToHex(mapToGamut(rgb.every(Number.isFinite) ? rgb : [0, 0, 0]));
-    const li = document.createElement("li");
-    li.innerHTML = `<span class="n">${i + 1}</span><span class="sw" style="background:${disp}"></span><code>${formatNative(native)}</code>`;
-    if (info.points === "many" && used.length > 1) {
-      const del = document.createElement("button");
-      del.textContent = "×";
-      del.title = "Remove";
-      del.onclick = () => { state.points.splice(i, 1); render(); };
-      li.append(del);
-    }
-    $("points").append(li);
-  });
+  syncPointRows(used, info.points === "many" && used.length > 1);
 
   // Gradient strip.
   const strip = $<HTMLCanvasElement>("strip");
@@ -459,7 +448,7 @@ function render(opts: { keepPlane?: boolean } = {}) {
     d.title = `${st.hex}${st.inGamut ? "" : " (outside sRGB, clipped)"} — click to copy`;
     if (!st.inGamut) d.className = "oog-stop";
     const label = document.createElement("span");
-    label.textContent = st.hex.slice(1).toUpperCase();
+    label.textContent = st.hex.slice(1);
     // An out-of-gamut stop's label sits on a dark chip over the stripes; see .oog-stop.
     if (st.inGamut) label.style.color = labelInk(st.display);
     d.append(label);
@@ -553,8 +542,94 @@ function fmtChannel(v: number, ch: { scale?: number; unit?: string }): string {
   return `${x.toFixed(digits)}${ch.unit ?? ""}`;
 }
 
-function formatNative(n: Vec3): string {
-  return space.channels.map((ch, i) => `${ch.name} ${fmtChannel(n[i], ch)}`).join("  ");
+/**
+ * Control point rows: number, swatch, one small input per channel of the current
+ * space, and a remove button. Rows are reused across renders, so the box being
+ * edited keeps its focus (and Tab moves on to the next) when an edit re-renders.
+ */
+function syncPointRows(used: Vec3[], canDelete: boolean) {
+  const list = $("points");
+  while (list.children.length > used.length) list.lastElementChild!.remove();
+  used.forEach((p, i) => {
+    let li = list.children[i] as HTMLLIElement | undefined;
+    if (!li) {
+      li = document.createElement("li");
+      // The point's number is drawn inside its color chip.
+      li.innerHTML = `<div class="pt-card"><span class="sw">${i + 1}</span><span class="pt-vals"></span></div>`;
+      const vals = li.querySelector(".pt-vals")!;
+      for (let c = 0; c < 3; c++) {
+        const box = document.createElement("label");
+        box.className = "pt-box";
+        const input = document.createElement("input");
+        input.type = "text";
+        input.inputMode = "decimal";
+        input.spellcheck = false;
+        input.autocomplete = "off";
+        input.onchange = () => {
+          editPoint(i, c, input.value);
+          // The render skips the focused box; show what was stored (normalized, or the old value).
+          if (state.points[i]) input.value = fmtValue(space.unembed(state.points[i])[c], space.channels[c]);
+        };
+        input.onkeydown = (e) => { if (e.key === "Enter") input.blur(); };
+        box.append(document.createElement("i"), input);
+        vals.append(box);
+      }
+      const del = document.createElement("button");
+      del.className = "pt-del";
+      del.textContent = "×";
+      del.title = "Remove";
+      del.onclick = () => { state.points.splice(i, 1); render(); };
+      li.querySelector(".pt-card")!.append(del);
+      list.append(li);
+    }
+    const native = space.unembed(p);
+    const rgb = space.toRGB(native);
+    // Control points steer the curve and may sit outside sRGB; only the path and its stops are flagged for it.
+    const chip = li.querySelector(".sw") as HTMLElement;
+    const chipRgb = mapToGamut(rgb.every(Number.isFinite) ? rgb : [0, 0, 0]);
+    chip.style.background = rgbToHex(chipRgb);
+    chip.style.color = contrastInk(chipRgb);
+    li.querySelectorAll(".pt-box").forEach((box, c) => {
+      const ch = space.channels[c];
+      box.querySelector("i")!.textContent = ch.name;
+      const input = box.querySelector("input")!;
+      input.setAttribute("aria-label", `Point ${i + 1} ${ch.name}`);
+      input.title = `${ch.name}${ch.unit ? ` (${ch.unit})` : ""}`;
+      if (document.activeElement !== input) input.value = fmtValue(native[c], ch);
+    });
+    (li.querySelector(".pt-del") as HTMLElement).hidden = !canDelete;
+  });
+}
+
+/**
+ * Black or white, whichever contrasts more with an sRGB color by the WCAG 2
+ * formula. The better of the two is always at least 4.58:1, so text on any
+ * color passes AA.
+ */
+function contrastInk(rgb: Vec3): string {
+  const [r, g, b] = srgbToLinear(rgb);
+  const L = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  return (L + 0.05) / 0.05 >= 1.05 / (L + 0.05) ? "#000" : "#fff";
+}
+
+/** A channel value for a point's input box: like the charts' readout, without the unit. Powerless hues are blank. */
+function fmtValue(v: number, ch: { scale?: number }): string {
+  if (!Number.isFinite(v)) return "";
+  const x = v * (ch.scale ?? 1);
+  return x.toFixed(Math.abs(x) < 2 && !ch.scale ? 3 : 1);
+}
+
+/** Set one channel of control point i from its input box. Text that is not a number puts the old value back. */
+function editPoint(i: number, c: number, text: string) {
+  const v = Number(text.trim().replace(/−/g, "-").replace(/[°%]$/, ""));
+  if (text.trim() === "" || !Number.isFinite(v) || !state.points[i]) {
+    render({ keepPlane: true });
+    return;
+  }
+  const native = space.unembed(state.points[i]);
+  native[c] = v / (space.channels[c].scale ?? 1);
+  state.points[i] = space.embed(native);
+  render();
 }
 
 /**

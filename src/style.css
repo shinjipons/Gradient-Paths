@@ -9,7 +9,7 @@
   --text-muted: #8a8a82;
   --grid: rgba(255, 255, 255, 0.07);
   /* App accent, and the text color drawn on top of it. Change the app's accent here. */
-  --accent: #23a67d;
+  --accent: hsl(45 93% 47%); /* #8B5CF6 */
   --accent-ink: #232323;
   --radius: 10px;
   --font-mono: "Geist Mono Variable", ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -65,8 +65,9 @@ code, kbd, samp, pre { font-family: var(--font-mono); }
   background: var(--accent); color: var(--accent-ink); font: inherit; font-size: 12px; font-weight: 600;
   cursor: pointer; white-space: nowrap;
 }
-.primary-btn:hover { background: #4b95ec; border-color: #4b95ec; }
-.primary-btn:active { background: #2f78d0; border-color: #2f78d0; }
+/* Hover and press shades are mixed from the accent, so they follow it. */
+.primary-btn:hover { background: color-mix(in oklab, var(--accent), #fff 15%); border-color: color-mix(in oklab, var(--accent), #fff 15%); }
+.primary-btn:active { background: color-mix(in oklab, var(--accent), #000 15%); border-color: color-mix(in oklab, var(--accent), #000 15%); }
 .primary-btn:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 
 /* Options of the active path mode, over the 3D view's bottom-left corner. */
@@ -78,11 +79,14 @@ code, kbd, samp, pre { font-family: var(--font-mono); }
 .mode-panel #arc-fields { display: flex; flex-direction: column; gap: 6px; margin: 12px 0 0; }
 /* Stacked like the arc's sliders: no sub-label, 12px under the title, 6px apart. */
 .mode-panel #hue-field { margin: 12px 0 0; }
-.mode-panel .points { margin-top: 6px; gap: 6px; }
+/* 12px under the title like the other fields; Add and Planarize follow 6px apart. */
+.mode-panel .points { margin-top: 12px; gap: 6px; }
 .mode-panel h3 { margin: 0 0 6px; padding: 3px; font-size: 13px; line-height: 1; font-weight: 600; }
 .mode-panel > :last-child, .mode-panel [hidden] + :last-child { margin-bottom: 0; }
-.mode-panel .seg button, .mode-panel select, .mode-panel .points li { background: var(--surface-1); }
+.mode-panel .seg button, .mode-panel select { background: var(--surface-1); }
 /* Spacing and easing, mirroring the path options on the bottom-right corner. */
+/* The path options are 16px wider than the default, so a control point's three values fit on one line. */
+.path-panel { width: 276px; }
 .sampling-panel { left: auto; right: 12px; }
 .sampling-panel .seg, .sampling-panel select { margin-top: 12px; }
 .sampling-panel h3:not(:first-child) { margin-top: 12px; }
@@ -131,11 +135,6 @@ code, kbd, samp, pre { font-family: var(--font-mono); }
 }
 .cp-tab i { width: 12px; height: 12px; border-radius: 50%; border: 1.5px solid #000; box-shadow: 0 0 0 1px rgba(255, 255, 255, .25); }
 .cp-tab[aria-selected="true"] { color: var(--text-primary); border-color: var(--text-muted); }
-.cp-close {
-  width: 28px; height: 28px; padding: 0; background: none; border: 0; border-radius: var(--cp-r);
-  color: var(--text-muted); font-size: 18px; line-height: 1; cursor: pointer;
-}
-.cp-close:hover { color: var(--text-primary); }
 
 .cp-sv { position: relative; height: 160px; border-radius: var(--cp-r); cursor: crosshair; touch-action: none; }
 .cp-sv canvas { display: block; width: 100%; height: 100%; border-radius: inherit; }
@@ -176,7 +175,7 @@ code, kbd, samp, pre { font-family: var(--font-mono); }
 
 .cp-foot { display: flex; align-items: center; gap: 6px; }
 .cp-hex { flex: 1; display: flex; align-items: center; gap: 4px; color: var(--text-muted); font: 11px var(--font-mono); }
-.cp-hex input { flex: 1; width: 100%; text-transform: lowercase; }
+.cp-hex input { flex: 1; width: 100%; text-transform: uppercase; }
 .cp-eye {
   display: grid; place-items: center; width: 28px; height: 26px; padding: 0;
   background: var(--surface-1); color: var(--text-secondary); border: 1px solid var(--border); border-radius: 4px; cursor: pointer;
@@ -184,7 +183,7 @@ code, kbd, samp, pre { font-family: var(--font-mono); }
 .cp-eye:hover { color: var(--text-primary); border-color: var(--text-muted); }
 .swatch-field input[type="text"] {
   width: 100%; min-width: 0; background: none; border: 0; color: var(--text-primary);
-  font: 11px var(--font-mono); text-transform: lowercase; padding: 0;
+  font: 11px var(--font-mono); text-transform: uppercase; padding: 0;
 }
 .swatch-field input[type="text"]:focus { outline: none; }
 
@@ -231,7 +230,6 @@ select { width: 100%; }
 .slider output { color: var(--accent); font-variant-numeric: tabular-nums; }
 .slider input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: ew-resize; }
 
-.points-head { display: flex; justify-content: space-between; align-items: center; color: var(--text-secondary); margin-top: 12px; }
 /* A panel-wide secondary action under the list: styled like the panel's unselected hue buttons, 6px below like the rest of the stack. */
 .wide-btn {
   box-sizing: border-box; display: block; width: 100%; height: 32px; margin-top: 6px; padding: 0 10px;
@@ -240,15 +238,33 @@ select { width: 100%; }
 }
 .wide-btn:hover { border-color: var(--text-muted); }
 .points { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 4px; }
-.points li {
-  display: flex; align-items: center; gap: 8px; background: var(--surface-2);
-  border: 1px solid var(--border); border-radius: 6px; padding: 4px 6px;
+/* A row: the point's card (numbered color chip, channel boxes, remove). */
+.points li { display: flex; align-items: center; gap: 6px; }
+/* No fill or border: just a row, padded on the right only. */
+.pt-card {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px;
+  border-radius: 6px; padding: 0 6px 0 0;
 }
-.points li .n { width: 16px; color: var(--text-muted); font-weight: 600; }
-.points li .sw { width: 18px; height: 18px; border-radius: 4px; border: 1px solid rgba(255,255,255,.2); }
-.points li code { flex: 1; color: var(--text-secondary); font-size: 11px; }
-.points li button { background: none; border: 0; color: var(--text-muted); cursor: pointer; font-size: 14px; }
-.points li button:hover { color: var(--text-primary); }
+/* The color chip, with the point's number on it in black or white (set per color, for contrast). */
+.points li .sw {
+  flex: none; display: grid; place-items: center; width: 20px; height: 20px; /* a circle, 2px shorter than the channel boxes */
+  border-radius: 50%; border: 1px solid rgba(255,255,255,.2);
+  font: 600 11px/1 var(--font-mono); font-variant-numeric: tabular-nums;
+}
+/* One small box per channel, its channel name in grey just left of it; the value is white and editable. */
+.pt-vals { flex: 1; min-width: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.pt-box { display: flex; align-items: center; gap: 3px; min-width: 0; }
+.pt-box i { flex: none; font: normal 600 10px var(--font-mono); color: var(--text-secondary); }
+.pt-box input {
+  flex: 1; min-width: 0; width: 100%; height: 22px; padding: 0 4px;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 4px; outline: none;
+  color: #fff; font: 11px var(--font-mono); font-variant-numeric: tabular-nums; text-align: right;
+}
+.pt-box input:hover { border-color: var(--text-muted); }
+.pt-box input:focus { border-color: var(--accent); }
+.points li button { flex: none; padding: 0 2px; background: none; border: 0; color: var(--text-muted); cursor: pointer; font-size: 14px; }
+/* Remove turns red on hover or keyboard focus: a destructive action. */
+.points li button:hover, .points li button:focus-visible { color: #e5484d; }
 
 /* --- main ------------------------------------------------------------- */
 
@@ -323,7 +339,7 @@ select { width: 100%; }
   color: var(--text-muted); cursor: pointer;
 }
 .tool-btn:hover { color: var(--text-primary); }
-.tool-btn[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+.tool-btn[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 /* The 3D toolbar is centered across the viewport; the axis gizmo owns the top-right corner. */
 .view-head.has-gizmo .toolbar { position: absolute; left: 50%; transform: translateX(-50%); }
 /* Black like the slice's off-gamut fill, so edges uncovered mid-pan match it. */

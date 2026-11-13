@@ -150,8 +150,12 @@ export class LineChart {
         s.values.forEach((v, i) => ctx.lineTo(X(i / (n - 1)), Y(v ?? inp.yMin)));
         ctx.lineTo(X(1), y1);
         ctx.closePath();
-        ctx.fillStyle = s.color + "33";
+        // A 20% tint of the line color. Alpha goes through globalAlpha, not a "#rrggbb" + "33"
+        // suffix, so any CSS color works (the accent may be hsl() or a name).
+        ctx.fillStyle = s.color;
+        ctx.globalAlpha = 0.2;
         ctx.fill();
+        ctx.globalAlpha = 1;
       }
       ctx.strokeStyle = s.color;
       ctx.lineWidth = 2;
