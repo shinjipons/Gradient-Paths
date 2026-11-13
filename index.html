@@ -109,27 +109,38 @@
                   <button id="reset-cam" class="text-btn" title="Reset camera">⟲</button>
                 </div>
               </div>
-              <!-- Vertical tool strip down the 3D view's left edge, below the space select. -->
-              <div class="vtoolbar" id="view3d-tools" role="toolbar" aria-orientation="vertical" aria-label="3D tools"></div>
-              <!-- A second strip down the right edge, below the axis widget. -->
-              <div class="vtoolbar right" id="view3d-tools-right" role="toolbar" aria-orientation="vertical" aria-label="3D view tools"></div>
-              <!-- Stops, spacing and easing, over the 3D view's bottom-right corner. Same chrome as the path options. -->
+              <!-- Vertical tool strips down the 3D view's left edge, below the space select: path modes, then the gizmo's move axes. -->
+              <div class="vtools">
+                <div class="vtoolbar" id="view3d-tools" role="toolbar" aria-orientation="vertical" aria-label="3D tools"></div>
+                <div class="vtoolbar" id="view3d-tools-right" role="toolbar" aria-orientation="vertical" aria-label="3D view tools"></div>
+              </div>
+              <!-- Stops, easing and spacing (in the order they apply), over the 3D view's bottom-right corner. Same chrome as the path options. -->
               <section class="mode-panel sampling-panel" aria-label="Sampling">
-                <label class="slider">
-                  <span class="slider-label">Stops</span>
-                  <output id="stops-out"></output>
-                  <input type="range" id="stops" min="2" max="32" step="1" />
-                </label>
-                <h3>Spacing</h3>
-                <div class="seg small" id="spacing-seg" role="group" aria-label="Spacing"></div>
-                <h3>Easing</h3>
-                <select id="easing" aria-label="Easing">
-                  <option value="linear">Linear</option>
-                  <option value="ease-in">Ease in</option>
-                  <option value="ease-out">Ease out</option>
-                  <option value="ease-in-out">Ease in-out</option>
-                  <option value="smoother">Smootherstep</option>
-                </select>
+                <!-- Title row; its button minimizes the panel to this row and back. -->
+                <div class="panel-head">
+                  <h3>Sampling</h3>
+                  <button id="sampling-toggle" class="panel-toggle" aria-expanded="true" aria-controls="sampling-body"></button>
+                </div>
+                <div class="panel-body" id="sampling-body">
+                  <label class="slider">
+                    <span class="slider-label">Stops</span>
+                    <output id="stops-out"></output>
+                    <input type="range" id="stops" min="2" max="32" step="1" />
+                  </label>
+                  <h3>Easing</h3>
+                  <select id="easing" aria-label="Easing">
+                    <option value="linear">Linear</option>
+                    <option value="ease-in">Ease in</option>
+                    <option value="ease-out">Ease out</option>
+                    <option value="ease-in-out">Ease in-out</option>
+                    <option value="smoother">Smootherstep</option>
+                    <option value="custom">Custom</option>
+                  </select>
+                  <!-- The custom easing's cubic Bézier: plot with draggable handles. -->
+                  <div id="bezier-field"></div>
+                  <h3>Spacing</h3>
+                  <div class="seg small" id="spacing-seg" role="group" aria-label="Spacing"></div>
+                </div>
               </section>
               <!-- Options of the active path mode, over the 3D view's bottom-left corner. -->
               <section class="mode-panel path-panel" aria-label="Path options">

@@ -1,6 +1,6 @@
 import { hexToRgb, rgbToHex, type Vec3 } from "./color/convert";
 import { spaceById, type ColorSpace } from "./color/spaces";
-import type { Easing, HueMode, PathMode, Spacing } from "./path/paths";
+import type { Bezier, Easing, HueMode, PathMode, Spacing } from "./path/paths";
 
 export type SolidStyle = "surface" | "points" | "wire" | "none";
 
@@ -17,6 +17,8 @@ export interface AppState {
   stops: number;
   spacing: Spacing;
   easing: Easing;
+  /** The custom easing's cubic Bézier, kept while another easing is picked. */
+  bezier: Bezier;
   solid: SolidStyle;
   opacity: number;
 }
@@ -33,6 +35,8 @@ export const DEFAULT_STATE: AppState = {
   stops: 11,
   spacing: "parameter",
   easing: "linear",
+  // CSS `ease-in-out`: a gentle S to start editing from.
+  bezier: [0.42, 0, 0.58, 1],
   solid: "points",
   opacity: 0.5,
 };
@@ -63,6 +67,7 @@ export function serialize(s: AppState): string {
     sp: s.spacing,
     e: s.easing,
   });
+  if (s.easing === "custom") q.set("eb", s.bezier.map((v) => +v.toFixed(3)).join(","));
   return q.toString();
 }
 
@@ -81,7 +86,9 @@ export function deserialize(hash: string): AppState {
   s.mode = pick("m", ["native", "line", "cylindrical", "arc", "quadratic", "cubic", "polyline", "spline"], s.mode);
   s.hueMode = pick("h", ["shorter", "longer", "increasing", "decreasing"], s.hueMode);
   s.spacing = pick("sp", ["parameter", "space", "perceptual"], s.spacing);
-  s.easing = pick("e", ["linear", "ease-in", "ease-out", "ease-in-out", "smoother"], s.easing);
+  s.easing = pick("e", ["linear", "ease-in", "ease-out", "ease-in-out", "smoother", "custom"], s.easing);
+  const eb = (q.get("eb") ?? "").split(",").map(Number);
+  if (eb.length === 4 && eb.every(Number.isFinite)) s.bezier = clampBezier(eb as Bezier);
   const p = q.get("p");
   if (p) {
     s.points = p
@@ -97,4 +104,9 @@ export function deserialize(hash: string): AppState {
   s.arcRoll = num("ar", -180, 180, s.arcRoll);
   s.stops = Math.round(num("n", 2, 32, s.stops));
   return s;
+}
+
+/** Keep a Bézier easing valid: every control point inside the unit square, so x stays monotonic and y stays 0–1. */
+export function clampBezier(b: Bezier): Bezier {
+  return b.map((v) => Math.min(1, Math.max(0, v))) as Bezier;
 }
