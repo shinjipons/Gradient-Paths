@@ -12,6 +12,7 @@ import {
   toPolar,
   type Vec3,
 } from "../color/convert";
+import { selectAllOnFocus } from "./inputs";
 
 export type Endpoint = "a" | "b";
 type Model = "rgb" | "hsl" | "oklch";
@@ -156,11 +157,6 @@ export class ColorPicker {
       b.onclick = () => this.open(w);
       this.tabs.push(b);
     }
-    const close = el("button", "cp-close", head);
-    close.type = "button";
-    close.setAttribute("aria-label", "Close");
-    close.textContent = "×";
-    close.onclick = () => this.close();
 
     // Saturation / value square.
     const svWrap = el("div", "cp-sv", root);
@@ -254,6 +250,7 @@ export class ColorPicker {
     el("span", "", hexWrap).textContent = "#";
     this.hex = el("input", "", hexWrap);
     this.hex.spellcheck = false;
+    selectAllOnFocus(this.hex);
     this.hex.maxLength = 7;
     this.hex.setAttribute("aria-label", "Hex");
     this.hex.onchange = () => {
@@ -396,12 +393,15 @@ export class ColorPicker {
 
   // --- drawing ---------------------------------------------------------------
 
+  /**
+   * Centered across the window, just below the swatches. The position does not
+   * depend on which endpoint is open, so switching Start/End never moves it.
+   */
   private place() {
-    const a = this.opts.anchor(this.which).getBoundingClientRect();
+    const bottom = Math.max(...(["a", "b"] as const).map((w) => this.opts.anchor(w).getBoundingClientRect().bottom));
     const w = this.root.offsetWidth;
-    const left = Math.max(8, Math.min(window.innerWidth - w - 8, a.left + a.width / 2 - w / 2));
-    this.root.style.left = `${left}px`;
-    this.root.style.top = `${a.bottom + 8}px`;
+    this.root.style.left = `${Math.max(8, (window.innerWidth - w) / 2)}px`;
+    this.root.style.top = `${bottom + 8}px`;
   }
 
   private paint() {

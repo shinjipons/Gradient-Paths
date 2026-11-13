@@ -132,7 +132,7 @@
                 </select>
               </section>
               <!-- Options of the active path mode, over the 3D view's bottom-left corner. -->
-              <section class="mode-panel" aria-label="Path options">
+              <section class="mode-panel path-panel" aria-label="Path options">
                 <h3 id="mode-title"></h3>
                 <div id="hue-field">
                   <div class="seg small" id="hue-seg" role="group" aria-label="Hue direction"></div>
@@ -150,11 +150,8 @@
                   </label>
                 </div>
                 <div id="points-field">
-                  <div class="points-head">
-                    <span>Control points</span>
-                    <button id="add-point" class="text-btn">+ Add</button>
-                  </div>
                   <ul id="points" class="points"></ul>
+                  <button id="add-point" class="wide-btn">Add control point</button>
                   <button id="planarize" class="wide-btn" title="Project the control points onto the section plane, along its normal">Planarize</button>
                 </div>
               </section>

@@ -50,8 +50,9 @@ export function convertPoints(points: Vec3[], from: ColorSpace, to: ColorSpace):
 
 export function serialize(s: AppState): string {
   const q = new URLSearchParams({
-    a: rgbToHex(s.a).slice(1),
-    b: rgbToHex(s.b).slice(1),
+    // Lowercase in the URL, so links stay as they were before hex codes went uppercase.
+    a: rgbToHex(s.a).slice(1).toLowerCase(),
+    b: rgbToHex(s.b).slice(1).toLowerCase(),
     s: s.space,
     m: s.mode,
     h: s.hueMode,

@@ -169,11 +169,13 @@ function rgbHue(r: number, g: number, b: number, max: number, d: number): number
 
 export const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
 
+/** "#RRGGBB", uppercase: every hex code the app shows or copies goes through here. */
 export const rgbToHex = (c: Vec3): string =>
   "#" +
   c
     .map((v) => Math.round(clamp01(v) * 255).toString(16).padStart(2, "0"))
-    .join("");
+    .join("")
+    .toUpperCase();
 
 export const hexToRgb = (hex: string): Vec3 | null => {
   let h = hex.trim().replace(/^#/, "");
