@@ -3,19 +3,20 @@ import "@fontsource-variable/geist-mono";
 import { inject } from "@vercel/analytics";
 import { Object3D } from "three";
 import {
-  Blend,
-  Camera,
-  ChartSpline,
+  ChevronDown,
   createElement,
-  GitFork,
-  Globe,
+  DraftingCompass,
+  LayerArrowUp,
+  Maximize2,
+  Move3d,
   Orbit,
-  Rainbow,
-  Route,
   Slash,
   Spline,
   SplinePointer,
-  SquareDashed,
+  Tangent,
+  VectorPolygon,
+  View,
+  Wand,
   type IconNode,
 } from "lucide";
 import { clamp01, hexToRgb, oklabToSrgb, rgbToHex, srgbToLinear, srgbToOklab, type Vec3 } from "./color/convert";
@@ -36,6 +37,7 @@ import { UndoHistory } from "./history";
 import { convertPoints, deserialize, serialize, type SolidStyle } from "./state";
 import { LineChart, type Series } from "./views/charts";
 import { makePlane, type Plane } from "./views/plane";
+import { BezierEditor } from "./views/beziereditor";
 import { ColorPicker } from "./views/colorpicker";
 import { selectAllOnFocus } from "./views/inputs";
 import { whenCanvasFontReady } from "./views/fonts";
@@ -103,14 +105,14 @@ spaceSel.onchange = () => {
 
 // Path modes live in the 3D view's vertical toolbar, one icon button each.
 const MODE_ICONS: Record<PathMode, IconNode> = {
-  native: Blend,
+  native: Wand,
   line: Slash,
   cylindrical: Orbit,
-  arc: Rainbow,
+  arc: DraftingCompass,
   quadratic: Spline,
   cubic: SplinePointer,
-  polyline: Route,
-  spline: ChartSpline,
+  polyline: VectorPolygon,
+  spline: Tangent,
 };
 const modeBtns = new Map<PathMode, HTMLButtonElement>();
 for (const m of MODES) {
@@ -238,16 +240,16 @@ const view3d = new View3D($("view3d"), {
 });
 $("reset-cam").onclick = () => view3d.reset();
 
-// Right-edge tools: which axes the selection gizmo moves a handle along.
+// Second left-edge strip, under the path modes: which axes the selection gizmo moves a handle along.
 const SPACE_TOOLS: { v: TranslateSpace; label: string; hint: string; icon: IconNode }[] = [
-  { v: "world", label: "World axes", hint: "Move along the color space's own X, Y and Z axes", icon: Globe },
-  { v: "camera", label: "Camera axes", hint: "Move across the screen, left–right and up–down", icon: Camera },
-  { v: "plane", label: "Section plane axes", hint: "Move within the section plane, or along its normal", icon: SquareDashed },
+  { v: "world", label: "World axes", hint: "Move along the color space's own X, Y and Z axes", icon: Move3d },
+  { v: "camera", label: "Camera axes", hint: "Move across the screen, left–right and up–down", icon: View },
+  { v: "plane", label: "Section plane axes", hint: "Move within the section plane, or along its normal", icon: LayerArrowUp },
   {
     v: "slide",
     label: "Slide along edges",
     hint: "Control points: slide along either control-polygon edge, or along their bisector. Endpoints use world axes",
-    icon: GitFork,
+    icon: Maximize2,
   },
 ];
 const spaceBtns = SPACE_TOOLS.map(({ v, label, hint, icon }) => {
@@ -308,6 +310,38 @@ insetObserver.observe($("slice"));
 for (const chart of $("slice").closest(".view")!.querySelectorAll(".pinned-chart")) insetObserver.observe(chart);
 
 $("reset-slice").onclick = () => slice.resetView();
+
+// The sampling panel minimizes to its title row and back. A per-viewer preference, so it is
+// remembered in this browser rather than kept in the shared link.
+const SAMPLING_KEY = "gp.samplingMinimized";
+const samplingToggle = $<HTMLButtonElement>("sampling-toggle");
+samplingToggle.append(createElement(ChevronDown, { width: 16, height: 16 }));
+function setSamplingMinimized(min: boolean) {
+  $("sampling-body").hidden = min;
+  samplingToggle.setAttribute("aria-expanded", String(!min));
+  const label = min ? "Expand the sampling options" : "Minimize the sampling options";
+  samplingToggle.title = label;
+  samplingToggle.setAttribute("aria-label", label);
+  try { localStorage.setItem(SAMPLING_KEY, min ? "1" : "0"); } catch { /* storage blocked */ }
+}
+samplingToggle.onclick = () => setSamplingMinimized(!$("sampling-body").hidden);
+// Minimized, the whole title row is a target: a click anywhere on it expands the panel.
+$("sampling-body").closest(".sampling-panel")!.addEventListener("click", (e) => {
+  if ($("sampling-body").hidden && !samplingToggle.contains(e.target as Node)) setSamplingMinimized(false);
+});
+let samplingMinimized = false;
+try { samplingMinimized = localStorage.getItem(SAMPLING_KEY) === "1"; } catch { /* storage blocked */ }
+setSamplingMinimized(samplingMinimized);
+
+// The custom easing's editor. A drag renders at most once a frame and is one undo step.
+const bezierEditor = new BezierEditor($("bezier-field"), {
+  onInput: (b) => {
+    state.bezier = b;
+    scheduleRender();
+  },
+  onGesture: (active) => { undoHistory.holding = active; },
+  onCommit: () => render({ keepPlane: true }),
+});
 
 // The endpoint picker. A drag in it fires many times a frame; each change only
 // marks the state dirty, and one draft render per frame catches up (coarse
@@ -411,6 +445,8 @@ function render(opts: { keepPlane?: boolean } = {}) {
   setRange("stops", state.stops, String(state.stops));
   segSet($("spacing-seg"), state.spacing);
   $<HTMLSelectElement>("easing").value = state.easing;
+  $("bezier-field").hidden = state.easing !== "custom";
+  if (state.easing === "custom") bezierEditor.set(state.bezier);
   $<HTMLSelectElement>("solid").value = state.solid;
 
   // Control point list.

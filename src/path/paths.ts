@@ -14,7 +14,11 @@ export type PathMode =
 
 export type HueMode = "shorter" | "longer" | "increasing" | "decreasing";
 export type Spacing = "parameter" | "space" | "perceptual";
-export type Easing = "linear" | "ease-in" | "ease-out" | "ease-in-out" | "smoother";
+export type PresetEasing = "linear" | "ease-in" | "ease-out" | "ease-in-out" | "smoother";
+/** A preset, or "custom": the cubic Bézier in the state's `bezier`. */
+export type Easing = PresetEasing | "custom";
+/** CSS `cubic-bezier(x1, y1, x2, y2)` control points; x1 and x2 in [0, 1]. */
+export type Bezier = [number, number, number, number];
 
 export interface ModeInfo {
   id: PathMode;
@@ -281,13 +285,50 @@ function catmullRom(p0: Vec3, p1: Vec3, p2: Vec3, p3: Vec3, u: number): Vec3 {
 
 // --- sampling --------------------------------------------------------------
 
-export const EASINGS: Record<Easing, (x: number) => number> = {
+export const EASINGS: Record<PresetEasing, (x: number) => number> = {
   linear: (x) => x,
   "ease-in": (x) => x * x * x,
   "ease-out": (x) => 1 - (1 - x) ** 3,
   "ease-in-out": (x) => (x < 0.5 ? 4 * x * x * x : 1 - (-2 * x + 2) ** 3 / 2),
   smoother: (x) => x * x * x * (x * (x * 6 - 15) + 10),
 };
+
+/**
+ * The easing function of CSS `cubic-bezier(x1, y1, x2, y2)`: a curve from
+ * (0,0) to (1,1) with those two control points. For an input x it finds the
+ * curve parameter whose x matches (Newton's method, with bisection as the
+ * fallback), and returns that point's y.
+ */
+export function cubicBezier([x1, y1, x2, y2]: Bezier): (x: number) => number {
+  // Polynomial coefficients of each coordinate, from the Bernstein form.
+  const cx = 3 * x1, bx = 3 * (x2 - x1) - cx, ax = 1 - cx - bx;
+  const cy = 3 * y1, by = 3 * (y2 - y1) - cy, ay = 1 - cy - by;
+  const X = (t: number) => ((ax * t + bx) * t + cx) * t;
+  const Y = (t: number) => ((ay * t + by) * t + cy) * t;
+  const dX = (t: number) => (3 * ax * t + 2 * bx) * t + cx;
+  return (x) => {
+    if (x <= 0) return 0;
+    if (x >= 1) return 1;
+    let t = x;
+    for (let i = 0; i < 8; i++) {
+      const err = X(t) - x;
+      if (Math.abs(err) < 1e-7) return Y(t);
+      const d = dX(t);
+      if (Math.abs(d) < 1e-6) break;
+      t -= err / d;
+    }
+    // Newton stalled (flat spot): X is monotonic for x1, x2 in [0, 1], so bisect.
+    let lo = 0;
+    let hi = 1;
+    t = x;
+    for (let i = 0; i < 40; i++) {
+      if (X(t) < x) lo = t;
+      else hi = t;
+      t = (lo + hi) / 2;
+    }
+    return Y(t);
+  };
+}
 
 export interface Sample {
   t: number;
@@ -320,7 +361,7 @@ export interface Gradient {
 export function computeGradient(
   space: ColorSpace,
   path: PathFn,
-  opts: { spacing: Spacing; easing: Easing; stops: number },
+  opts: { spacing: Spacing; easing: Easing; bezier: Bezier; stops: number },
 ): Gradient {
   const sampleAt = (t: number): Sample => {
     const { embed, native } = path(t);
@@ -364,7 +405,7 @@ export function computeGradient(
     return (lo + (target - cum[lo]) / seg) / N;
   };
 
-  const ease = EASINGS[opts.easing];
+  const ease = opts.easing === "custom" ? cubicBezier(opts.bezier) : EASINGS[opts.easing];
   const at = (u: number) => sampleAt(tFor(Math.min(1, Math.max(0, ease(u)))));
   const n = Math.max(2, opts.stops);
   const stops = Array.from({ length: n }, (_, i) => at(i / (n - 1)));
