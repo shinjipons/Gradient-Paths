@@ -12,7 +12,8 @@
   --accent: #23a67d;
   --accent-ink: #232323;
   --radius: 10px;
-  font-family: "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "Geist Mono Variable", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: "Geist Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   font-size: 13px;
   color: var(--text-primary);
   background: var(--bg);
@@ -21,6 +22,7 @@
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 body { margin: 0; background: var(--bg); }
+code, kbd, samp, pre { font-family: var(--font-mono); }
 /* Readable by search engines and screen readers, not drawn on screen. */
 .sr-only {
   position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
@@ -102,17 +104,87 @@ body { margin: 0; background: var(--bg); }
   border-radius: 8px; padding: 4px 5px;
 }
 .tag { font-weight: 700; color: var(--text-muted); font-size: 11px; }
-/* Circular, black-ringed, like the A/B handles in the views. */
-.swatch-field input[type="color"] {
-  width: 20px; height: 20px; border: 0; padding: 0; background: none; cursor: pointer; flex: none;
-  border-radius: 50%;
+/* Circular, black-ringed, like the A/B handles in the views. Opens the picker. */
+.swatch-btn {
+  width: 20px; height: 20px; padding: 0; flex: none; cursor: pointer;
+  border: 2px solid #000; border-radius: 50%; box-shadow: 0 0 0 1px rgba(255, 255, 255, .25);
 }
-.swatch-field input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
-.swatch-field input[type="color"]::-webkit-color-swatch { border-radius: 50%; border: 2px solid #000; }
-.swatch-field input[type="color"]::-moz-color-swatch { border-radius: 50%; border: 2px solid #000; }
+.swatch-btn:hover, .swatch-btn[aria-expanded="true"] { box-shadow: 0 0 0 2px var(--text-primary); }
+.swatch-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* --- color picker popover ------------------------------------------------ */
+
+.cp {
+  position: fixed; z-index: 50; width: 272px; padding: 8px;
+  display: flex; flex-direction: column; gap: 8px;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, .5);
+  --cp-r: 6px;
+}
+.cp :focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.cp-head { display: flex; align-items: center; gap: 6px; }
+.cp-tabs { display: flex; flex: 1; gap: 4px; }
+.cp-tab {
+  flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 28px;
+  background: var(--surface-1); color: var(--text-secondary); border: 1px solid var(--border); border-radius: var(--cp-r);
+  font: inherit; font-size: 12px; font-weight: 600; cursor: pointer;
+}
+.cp-tab i { width: 12px; height: 12px; border-radius: 50%; border: 1.5px solid #000; box-shadow: 0 0 0 1px rgba(255, 255, 255, .25); }
+.cp-tab[aria-selected="true"] { color: var(--text-primary); border-color: var(--text-muted); }
+.cp-close {
+  width: 28px; height: 28px; padding: 0; background: none; border: 0; border-radius: var(--cp-r);
+  color: var(--text-muted); font-size: 18px; line-height: 1; cursor: pointer;
+}
+.cp-close:hover { color: var(--text-primary); }
+
+.cp-sv { position: relative; height: 160px; border-radius: var(--cp-r); cursor: crosshair; touch-action: none; }
+.cp-sv canvas { display: block; width: 100%; height: 100%; border-radius: inherit; }
+/* Thumbs: a ring filled with the current color, centered on the value. */
+.cp-thumb {
+  position: absolute; top: 50%; width: 14px; height: 14px; margin: -7px 0 0 -7px; pointer-events: none;
+  border: 2px solid #fff; border-radius: 50%; box-shadow: 0 0 0 1px rgba(0, 0, 0, .6), 0 1px 3px rgba(0, 0, 0, .5);
+}
+.cp-hue-row { display: flex; align-items: center; gap: 8px; }
+.cp-preview { flex: none; width: 28px; height: 28px; border-radius: 50%; border: 2px solid #000; box-shadow: 0 0 0 1px rgba(255, 255, 255, .25); }
+.cp-hue, .cp-track {
+  position: relative; flex: 1; height: 14px; border-radius: 7px; cursor: ew-resize; touch-action: none;
+}
+.cp-hue { background: linear-gradient(90deg, #f00, #ff0 16.67%, #0f0 33.33%, #0ff 50%, #00f 66.67%, #f0f 83.33%, #f00); }
+/* Channel tracks: the canvas is transparent outside sRGB, letting these stripes show. */
+.cp-track { background: repeating-linear-gradient(135deg, #2a2a28 0 3px, #111110 3px 6px); }
+.cp-track canvas { display: block; width: 100%; height: 100%; border-radius: inherit; image-rendering: auto; }
+
+.cp-models { display: flex; gap: 2px; padding: 2px; background: var(--surface-1); border-radius: var(--cp-r); }
+.cp-models button {
+  flex: 1; height: 24px; background: none; border: 0; border-radius: 4px;
+  color: var(--text-muted); font: inherit; font-size: 11px; font-weight: 600; letter-spacing: .04em; cursor: pointer;
+}
+.cp-models button:hover { color: var(--text-primary); }
+.cp-models button[aria-pressed="true"] { background: var(--surface-2); color: var(--text-primary); }
+
+.cp-channels { display: grid; gap: 8px; }
+.cp-ch { display: grid; grid-template-columns: 14px 1fr 56px; align-items: center; gap: 8px; }
+.cp-ch-name { color: var(--text-muted); font-size: 11px; font-weight: 600; }
+.cp-num, .cp-hex input {
+  min-width: 0; height: 24px; padding: 0 6px; background: var(--surface-1); color: var(--text-primary);
+  border: 1px solid var(--border); border-radius: 4px;
+  font: 11px var(--font-mono); font-variant-numeric: tabular-nums;
+}
+.cp-num { width: 100%; text-align: right; -moz-appearance: textfield; }
+.cp-num::-webkit-inner-spin-button, .cp-num::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.cp-num:focus, .cp-hex input:focus { outline: none; border-color: var(--accent); }
+
+.cp-foot { display: flex; align-items: center; gap: 6px; }
+.cp-hex { flex: 1; display: flex; align-items: center; gap: 4px; color: var(--text-muted); font: 11px var(--font-mono); }
+.cp-hex input { flex: 1; width: 100%; text-transform: lowercase; }
+.cp-eye {
+  display: grid; place-items: center; width: 28px; height: 26px; padding: 0;
+  background: var(--surface-1); color: var(--text-secondary); border: 1px solid var(--border); border-radius: 4px; cursor: pointer;
+}
+.cp-eye:hover { color: var(--text-primary); border-color: var(--text-muted); }
 .swatch-field input[type="text"] {
   width: 100%; min-width: 0; background: none; border: 0; color: var(--text-primary);
-  font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; text-transform: lowercase; padding: 0;
+  font: 11px var(--font-mono); text-transform: lowercase; padding: 0;
 }
 .swatch-field input[type="text"]:focus { outline: none; }
 
@@ -202,7 +274,7 @@ select { width: 100%; }
   display: flex; align-items: center; justify-content: center; padding: 0 8px; container-type: inline-size;
 }
 .stops div span {
-  font: 600 11px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.02em;
+  font: 600 11px var(--font-mono); letter-spacing: 0.02em;
   white-space: nowrap; pointer-events: none;
 }
 /* Too narrow for six characters (many stops): show color only. */

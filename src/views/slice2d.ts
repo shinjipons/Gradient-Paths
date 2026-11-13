@@ -2,6 +2,7 @@ import { clamp01, type Vec3 } from "../color/convert";
 import { isRealColor, type ColorSpace } from "../color/spaces";
 import type { Sample } from "../path/paths";
 import { PLANE_EDGE, project, unproject, type Plane } from "./plane";
+import { CANVAS_SANS } from "./fonts";
 
 export type Handle = { kind: "a" | "b" } | { kind: "point"; index: number };
 
@@ -425,7 +426,7 @@ export class SliceView {
         ctx.fillRect(x - r, y - r, r * 2, r * 2);
         ctx.strokeRect(x - r, y - r, r * 2, r * 2);
         ctx.fillStyle = "#fff";
-        ctx.font = "600 9px ui-sans-serif, system-ui";
+        ctx.font = `600 9px ${CANVAS_SANS}`;
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
         ctx.fillText(String(hd.index + 1), x, y + 0.5);
@@ -441,7 +442,7 @@ export class SliceView {
     }
 
     // Axis captions.
-    ctx.font = "600 11px ui-sans-serif, system-ui";
+    ctx.font = `600 11px ${CANVAS_SANS}`;
     ctx.shadowColor = "rgba(0,0,0,0.9)";
     ctx.shadowBlur = 3;
     ctx.textAlign = "right";

@@ -1,4 +1,5 @@
-import "@fontsource-variable/inter";
+import "@fontsource-variable/geist";
+import "@fontsource-variable/geist-mono";
 import { inject } from "@vercel/analytics";
 import { Object3D } from "three";
 import {
@@ -35,6 +36,8 @@ import { UndoHistory } from "./history";
 import { convertPoints, deserialize, serialize, type SolidStyle } from "./state";
 import { LineChart, type Series } from "./views/charts";
 import { makePlane, type Plane } from "./views/plane";
+import { ColorPicker } from "./views/colorpicker";
+import { whenCanvasFontReady } from "./views/fonts";
 import { SliceView } from "./views/slice2d";
 import { View3D, type TranslateSpace } from "./views/view3d";
 
@@ -146,9 +149,8 @@ $<HTMLSelectElement>("easing").onchange = (e) => { state.easing = (e.target as H
 $<HTMLSelectElement>("solid").onchange = (e) => { state.solid = (e.target as HTMLSelectElement).value as SolidStyle; render(); };
 
 for (const which of ["a", "b"] as const) {
-  const picker = $<HTMLInputElement>(`${which}-color`);
+  $(`${which}-color`).onclick = () => picker.toggle(which);
   const text = $<HTMLInputElement>(`${which}-hex`);
-  picker.oninput = () => { state[which] = hexToRgb(picker.value)!; render(); };
   text.onchange = () => {
     const rgb = hexToRgb(text.value);
     if (rgb) state[which] = rgb;
@@ -303,6 +305,30 @@ for (const chart of $("slice").closest(".view")!.querySelectorAll(".pinned-chart
 
 $("reset-slice").onclick = () => slice.resetView();
 
+// The endpoint picker. A drag in it fires many times a frame; each change only
+// marks the state dirty, and one draft render per frame catches up (coarse
+// slice, merged undo step). The gesture's end renders at full quality.
+let picking = false;
+const picker = new ColorPicker({
+  get: (which) => state[which],
+  anchor: (which) => $(`${which}-color`),
+  onInput: (which, rgb) => {
+    state[which] = rgb;
+    scheduleRender({ keepPlane: false });
+  },
+  onGesture: (active) => {
+    picking = active;
+    slice.setDraft(active);
+    undoHistory.holding = active;
+  },
+  onCommit: () => {
+    if (picking) return;
+    cancelAnimationFrame(raf);
+    raf = 0;
+    render();
+  },
+});
+
 // Its direct labels are short channel names ("OK L" at most), so a narrow gutter fits.
 const chartChannels = new LineChart($("chart-channels"), 36);
 const chartSpeed = new LineChart($("chart-speed"));
@@ -314,10 +340,33 @@ let lastDense: Vec3[] = [];
 
 
 let raf = 0;
-function scheduleRender() {
-  // Only drags and resizes come through here. A 2D drag holds the slice still (lockedPlane);
-  // a 3D drag leaves it unlocked, so it re-orients as the path moves.
-  if (!raf) raf = requestAnimationFrame(() => { raf = 0; render({ keepPlane: true }); });
+let pendingKeepPlane = true;
+function scheduleRender(opts: { keepPlane?: boolean } = {}) {
+  // Drags, resizes and the color picker come through here. A 2D drag holds the slice still
+  // (lockedPlane); a 3D drag leaves it unlocked, so it re-orients as the path moves. The picker
+  // unlocks it, like any edit made outside the slice.
+  pendingKeepPlane &&= opts.keepPlane ?? true;
+  if (!raf) {
+    raf = requestAnimationFrame(() => {
+      raf = 0;
+      const keepPlane = pendingKeepPlane;
+      pendingKeepPlane = true;
+      render({ keepPlane });
+    });
+  }
+}
+
+/**
+ * The URL hash mirrors the state, written at most every 250 ms: browsers rate-limit
+ * replaceState (Safari throws past 100 calls in 30 s), and a drag renders every frame.
+ */
+let hashTimer = 0;
+function writeHash() {
+  if (hashTimer) return;
+  hashTimer = window.setTimeout(() => {
+    hashTimer = 0;
+    history.replaceState(null, "", `#${serialize(state)}`);
+  }, 250);
 }
 
 function render(opts: { keepPlane?: boolean } = {}) {
@@ -337,8 +386,9 @@ function render(opts: { keepPlane?: boolean } = {}) {
   const bHex = rgbToHex(state.b);
 
   // Controls.
-  $<HTMLInputElement>("a-color").value = aHex;
-  $<HTMLInputElement>("b-color").value = bHex;
+  $("a-color").style.background = aHex;
+  $("b-color").style.background = bHex;
+  picker.sync();
   for (const [id, hex] of [["a-hex", aHex], ["b-hex", bHex]]) {
     const el = $<HTMLInputElement>(id);
     if (document.activeElement !== el) el.value = hex;
@@ -492,7 +542,7 @@ function render(opts: { keepPlane?: boolean } = {}) {
     area: true,
   });
 
-  history.replaceState(null, "", `#${serialize(state)}`);
+  writeHash();
   undoHistory.record(state);
 }
 
@@ -533,7 +583,12 @@ function setRange(id: string, v: number, text: string) {
   if (out) out.textContent = text;
 }
 
-window.addEventListener("resize", scheduleRender);
+window.addEventListener("resize", () => scheduleRender());
+// Canvas text drawn before Geist arrives uses the fallback font; redraw it once Geist is in.
+whenCanvasFontReady().then(() => {
+  view3d.refreshText();
+  render({ keepPlane: true });
+});
 // A pasted or edited link: replaceState above never fires this.
 window.addEventListener("hashchange", () => {
   Object.assign(state, deserialize(location.hash));
