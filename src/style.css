@@ -9,7 +9,7 @@
   --text-muted: #8a8a82;
   --grid: rgba(255, 255, 255, 0.07);
   /* App accent, and the text color drawn on top of it. Change the app's accent here. */
-  --accent: hsl(45 93% 47%); /* #8B5CF6 */
+  --accent: hsl(45 93% 47%); /* #E7B008 */
   --accent-ink: #232323;
   --radius: 10px;
   --font-mono: "Geist Mono Variable", ui-monospace, SFMono-Regular, Menlo, monospace;
