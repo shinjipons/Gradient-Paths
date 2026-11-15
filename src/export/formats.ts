@@ -78,7 +78,7 @@ export function cssRule(value: string, form: CssForm): string {
 // --- geometry shared by SVG and PNG -------------------------------------------
 
 /** The CSS gradient line of a linear gradient in a size × size square (y down): its ends. */
-function linearLine(angle: number, size: number) {
+export function linearLine(angle: number, size: number) {
   const t = rad(angle);
   const dx = Math.sin(t);
   const dy = -Math.cos(t);
@@ -87,7 +87,7 @@ function linearLine(angle: number, size: number) {
   return { x1: c - dx * half, y1: c - dy * half, x2: c + dx * half, y2: c + dy * half };
 }
 
-const radialRadius = (size: RadialSize, side: number) => (size === "closest-side" ? side / 2 : (side / 2) * Math.SQRT2);
+export const radialRadius = (size: RadialSize, side: number) => (size === "closest-side" ? side / 2 : (side / 2) * Math.SQRT2);
 
 /** Gradient position (unclamped) at pixel center (x, y) of a size × size square. */
 export function positionAt(g: Geometry, size: number, x: number, y: number): number {
@@ -144,12 +144,33 @@ export function renderSquare(
   const img = ctx.createImageData(size, size);
   // A lookup table along the gradient, fine enough that neighboring entries never differ by a visible step.
   const LUT = 2048;
-  const lut = new Uint8ClampedArray(LUT * 3);
+  const lut = colorLut(grad, g.blend, source, LUT);
+  const d = img.data;
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const t = Math.min(1, Math.max(0, positionAt(g, size, x + 0.5, y + 0.5)));
+      const k = Math.min(LUT - 1, Math.round(t * (LUT - 1))) * 3;
+      const o = (y * size + x) * 4;
+      d[o] = lut[k];
+      d[o + 1] = lut[k + 1];
+      d[o + 2] = lut[k + 2];
+      d[o + 3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+}
+
+/**
+ * RGB bytes for `count` evenly spaced gradient positions, 0 to 1. Bands: each stop flat over
+ * its band. Otherwise "path" samples the gradient's exact path and "stops" blends the stops in sRGB.
+ */
+export function colorLut(grad: Gradient, blend: Blend, source: "path" | "stops", count: number): Uint8ClampedArray {
+  const lut = new Uint8ClampedArray(count * 3);
   const n = grad.stops.length;
-  for (let i = 0; i < LUT; i++) {
-    const u = i / (LUT - 1);
+  for (let i = 0; i < count; i++) {
+    const u = i / (count - 1);
     let c: Vec3;
-    if (g.blend === "bands") {
+    if (blend === "bands") {
       c = grad.stops[Math.min(n - 1, Math.floor(u * n))].display;
     } else if (source === "path") {
       c = grad.at(u).display;
@@ -165,19 +186,7 @@ export function renderSquare(
     lut[i * 3 + 1] = Math.round(c[1] * 255);
     lut[i * 3 + 2] = Math.round(c[2] * 255);
   }
-  const d = img.data;
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      const t = Math.min(1, Math.max(0, positionAt(g, size, x + 0.5, y + 0.5)));
-      const k = Math.min(LUT - 1, Math.round(t * (LUT - 1))) * 3;
-      const o = (y * size + x) * 4;
-      d[o] = lut[k];
-      d[o + 1] = lut[k + 1];
-      d[o + 2] = lut[k + 2];
-      d[o + 3] = 255;
-    }
-  }
-  ctx.putImageData(img, 0, 0);
+  return lut;
 }
 
 // --- Blender ---------------------------------------------------------------------
