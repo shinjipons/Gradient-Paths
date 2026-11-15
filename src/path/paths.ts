@@ -126,6 +126,25 @@ export function bowDirection(space: ColorSpace, a: Vec3, b: Vec3, bow: number): 
   return best;
 }
 
+/**
+ * The arc roll (degrees) that makes an arc from a to b (embed space) bulge toward
+ * `bulge`, for a bend of the given sign. `bulge` need not be perpendicular to the
+ * chord; only its perpendicular part counts. Null when the chord is too short or
+ * `bulge` runs along it.
+ */
+export function arcRollToward(space: ColorSpace, a: Vec3, b: Vec3, bend: number, bulge: Vec3): number | null {
+  const chord = sub(b, a);
+  const c = len(chord) / 2;
+  if (c < 1e-6) return null;
+  const cx = norm(chord);
+  const perp = sub(bulge, scale(cx, dot(bulge, cx)));
+  if (len(perp) < 1e-9) return null;
+  // The arc bulges along sign(bend) × cy, with cy = rotate(base, cx, roll); see buildPath.
+  const cy = scale(norm(perp), bend < 0 ? -1 : 1);
+  const base = bowDirection(space, a, b, c);
+  return (Math.atan2(dot(cy, cross(cx, base)), dot(cy, base)) * 180) / Math.PI;
+}
+
 /** A default for control point i of n. `through`: the curve passes through it. */
 export function defaultPoint(space: ColorSpace, a: Vec3, b: Vec3, i: number, n: number, through: boolean): Vec3 {
   const t = (i + 1) / (n + 1);
@@ -199,8 +218,10 @@ export function buildPath(space: ColorSpace, aRGB: Vec3, bRGB: Vec3, p: PathPara
       if (c < 1e-6 || Math.abs(h) < 1e-6) return (t) => fromEmbed(lerp(A, B, t));
       const cx = norm(chord);
       const mid = lerp(A, B, 0.5);
-      // Roll 0 bows the way that stays in gamut and away from gray.
-      const bow = bowDirection(space, A, B, Math.abs(h));
+      // Roll 0 bows the way that stays in gamut and away from gray. The direction is chosen for
+      // a full semicircle (bow = c), not the current bend, so changing the bend never turns the
+      // arc's plane: only roll does.
+      const bow = bowDirection(space, A, B, c);
       const cy = rotate(bow, cx, (p.arcRoll * Math.PI) / 180);
       const R = (c * c + h * h) / (2 * h);
       const alpha = 2 * Math.atan(h / c);

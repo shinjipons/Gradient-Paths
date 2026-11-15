@@ -23,6 +23,7 @@ import { clamp01, hexToRgb, oklabToSrgb, rgbToHex, srgbToLinear, srgbToOklab, ty
 import { SPACES, spaceById } from "./color/spaces";
 import {
   MODES,
+  arcRollToward,
   buildPath,
   computeGradient,
   ensurePoints,
@@ -32,8 +33,9 @@ import {
   type PathMode,
   type Spacing,
 } from "./path/paths";
-import { add, dist, dot, scale, sub } from "./path/vec";
+import { add, cross, dist, dot, scale, sub } from "./path/vec";
 import { UndoHistory } from "./history";
+import { ExportDialog } from "./export/dialog";
 import { convertPoints, deserialize, serialize, type SolidStyle } from "./state";
 import { LineChart, type Series } from "./views/charts";
 import { makePlane, type Plane } from "./views/plane";
@@ -187,18 +189,14 @@ $("planarize").onclick = () => {
 };
 
 
-/** The gradient's stops as a CSS background, refreshed on every render. */
-let gradientCss = "";
-$("copy-css").onclick = async () => {
-  const btn = $("copy-css");
-  try {
-    await navigator.clipboard.writeText(gradientCss);
-    btn.textContent = "Copied";
-  } catch {
-    btn.textContent = "Copy failed";
-  }
-  setTimeout(() => (btn.textContent = "Copy CSS"), 1200);
-};
+/** The gradient as of the last render: what the Export dialog exports. */
+let lastGrad: ReturnType<typeof computeGradient>;
+const exportDialog = new ExportDialog({
+  gradient: () => lastGrad,
+  stops: () => state.stops,
+  setStops: (n) => { state.stops = n; render({ keepPlane: true }); },
+});
+$("export").onclick = () => exportDialog.open();
 
 // --- views -------------------------------------------------------------------
 
@@ -271,7 +269,11 @@ setTranslateSpace("world");
 const slice = new SliceView($("slice"), {
   onDragStart: () => { lockedPlane = currentPlane ?? null; undoHistory.holding = true; },
   onDragEnd: () => { undoHistory.holding = false; render({ keepPlane: true }); },
-  onEndpoint: (which, rgb) => { state[which] = rgb; scheduleRender(); },
+  onEndpoint: (which, rgb) => {
+    state[which] = rgb;
+    if (state.mode === "arc" && lockedPlane) keepArcInPlane(lockedPlane);
+    scheduleRender();
+  },
   onPoint: (i, e) => { state.points[i] = e; scheduleRender(); },
   onAddPoint: (e) => {
     const A = space.embed(space.fromRGB(state.a));
@@ -287,6 +289,22 @@ const slice = new SliceView($("slice"), {
     render({ keepPlane: true });
   },
 });
+
+/**
+ * An endpoint dragged in the slice moves within the section plane. The arc's roll is
+ * measured from a direction that depends on both endpoints, so at a fixed roll the arc
+ * would tilt out of the plane: re-aim the roll so the arc keeps bulging, in the plane,
+ * to the same side as before.
+ */
+function keepArcInPlane(pl: Plane) {
+  const A = space.embed(space.fromRGB(state.a));
+  const B = space.embed(space.fromRGB(state.b));
+  // In the plane, perpendicular to the chord, on the side the arc bulged to (the plane's v).
+  let bulge = cross(pl.n, sub(B, A));
+  if (dot(bulge, pl.v) < 0) bulge = scale(bulge, -1);
+  const roll = arcRollToward(space, A, B, state.arcBend, bulge);
+  if (roll !== null) state.arcRoll = roll;
+}
 
 // Keep the slice plot clear of the floating UI: its header above, the speed
 // chart below.
@@ -492,10 +510,7 @@ function render(opts: { keepPlane?: boolean } = {}) {
     $("stop-swatches").append(d);
   }
 
-  const n = grad.stops.length;
-  gradientCss = `background: linear-gradient(90deg, ${grad.stops
-    .map((s, i) => `${s.hex} ${+((i / (n - 1)) * 100).toFixed(2)}%`)
-    .join(", ")});`;
+  lastGrad = grad;
 
   // Stats.
   const K = 201;
