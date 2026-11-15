@@ -20,6 +20,7 @@ import {
   type RadialSize,
   type StopsFormat,
 } from "./formats";
+import { hasTexture, renderTexturedSquare, texturedSvg, type Texture, type TextureKind } from "./texture";
 
 type Tab = "css" | "svg" | "png" | "figma" | "blender" | "stops";
 
@@ -31,6 +32,8 @@ interface Settings extends Geometry {
   svgSize: number;
   pngSize: number;
   pngSource: "path" | "stops";
+  /** Procedural texture, shared by the SVG and PNG tabs. */
+  texture: Texture;
   blenderApply: boolean;
   stopsFormat: StopsFormat;
 }
@@ -47,6 +50,7 @@ const DEFAULTS: Settings = {
   svgSize: 512,
   pngSize: 1024,
   pngSource: "path",
+  texture: { kind: "none", amount: 0.35, detail: 0.35, grain: 0, seed: 1 },
   blenderApply: true,
   stopsFormat: "hex",
 };
@@ -56,7 +60,10 @@ const STORE_KEY = "gp.export";
 function load(): Settings {
   try {
     const raw = localStorage.getItem(STORE_KEY);
-    if (raw) return { ...DEFAULTS, ...JSON.parse(raw) };
+    if (raw) {
+      const saved = JSON.parse(raw);
+      return { ...DEFAULTS, ...saved, texture: { ...DEFAULTS.texture, ...saved.texture } };
+    }
   } catch { /* storage blocked or bad JSON */ }
   return { ...DEFAULTS };
 }
@@ -134,6 +141,8 @@ export class ExportDialog {
   private shapeHost: HTMLElement;
 
   private stopsSlider!: { set(v: number): void };
+  /** Bumped on every output render, so a late async preview never replaces a newer one. */
+  private outputToken = 0;
 
   constructor(private app: {
     gradient: () => Gradient;
@@ -379,6 +388,8 @@ export class ExportDialog {
         s.svgSize,
         (v) => this.set({ svgSize: v }),
       )));
+      // Figma drops SVG filters on import, so it gets no texture.
+      if (s.tab === "svg") this.opts.append(...this.textureFields());
     } else if (s.tab === "png") {
       this.opts.append(
         this.field("Resolution", this.seg<number>(
@@ -390,6 +401,7 @@ export class ExportDialog {
           { v: "path", label: "Exact path", title: "Every pixel sampled along the gradient's path: no stops at all", disabled: s.blend === "bands" },
           { v: "stops", label: "Stops", title: "The sampled stops blended in sRGB, like the CSS and SVG" },
         ], s.pngSource, (v) => this.set({ pngSource: v }))),
+        ...this.textureFields(),
       );
     } else if (s.tab === "blender") {
       this.opts.append(this.check("Assign to the active object", s.blenderApply, (v) => this.set({ blenderApply: v })));
@@ -404,12 +416,49 @@ export class ExportDialog {
     this.renderOutput();
   }
 
+  /** Texture controls for the SVG and PNG tabs. Sliders update live, without rebuilding the controls. */
+  private textureFields(): HTMLElement[] {
+    const t = this.s.texture;
+    const pct = (v: number) => `${Math.round(v * 100)}%`;
+    const live = (key: "amount" | "detail" | "grain") => (v: number) => {
+      t[key] = v / 100;
+      this.save();
+      this.renderOutput();
+    };
+    const fields = [
+      this.field("Texture", this.seg<TextureKind>([
+        { v: "none", label: "None" },
+        { v: "clouds", label: "Clouds", title: "Soft noise that warps the gradient in every direction" },
+        { v: "streaks", label: "Streaks", title: "Noise stretched along the gradient: smeared, brushed bands" },
+      ], t.kind, (v) => this.set({ texture: { ...t, kind: v } }))),
+    ];
+    if (t.kind !== "none") {
+      fields.push(
+        this.field("Amount", this.slider("Amount", 0, 100, 1, t.amount * 100, (v) => pct(v / 100), live("amount")).el),
+        this.field("Detail", this.slider("Detail", 0, 100, 1, t.detail * 100, (v) => pct(v / 100), live("detail")).el),
+      );
+    }
+    fields.push(this.field("Grain", this.slider("Grain", 0, 100, 1, t.grain * 100, (v) => pct(v / 100), live("grain")).el));
+    if (hasTexture(t)) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "text-btn ex-shuffle";
+      b.textContent = `Shuffle noise (#${t.seed})`;
+      b.title = "Pick another random noise pattern";
+      b.onclick = () => this.set({ texture: { ...t, seed: 1 + Math.floor(Math.random() * 9999) } });
+      fields.push(this.field("Seed", b));
+    }
+    return fields;
+  }
+
   /** Preview, code, note and actions: everything that depends on the values but not the controls. */
   private renderOutput() {
     const s = this.s;
     const grad = this.app.gradient();
     const n = grad.stops.length;
     const pngSource = s.blend === "bands" ? "stops" : s.pngSource;
+    const textured = hasTexture(s.texture);
+    const token = ++this.outputToken;
     this.actions.innerHTML = "";
     this.preview.innerHTML = "";
     this.preview.style.background = "";
@@ -430,7 +479,10 @@ export class ExportDialog {
       this.code.innerHTML = highlight(text, CSS_RULES);
       this.button("Copy CSS", true, () => copyText(text));
     } else if (s.tab === "svg" || s.tab === "figma") {
-      const svg = svgSquare(grad, this.geometry(), s.svgSize);
+      const svg = s.tab === "svg" && textured
+        ? texturedSvg(grad, this.geometry(), s.svgSize, s.texture)
+        : svgSquare(grad, this.geometry(), s.svgSize);
+      if (s.tab === "svg" && textured) note = "The texture is an SVG filter: apps that ignore filters, like Figma, show the plain gradient.";
       const img = new Image();
       img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
       img.alt = "";
@@ -445,11 +497,18 @@ export class ExportDialog {
       }
     } else if (s.tab === "png") {
       this.code.hidden = true;
-      previewCanvas(pngSource);
+      if (textured) {
+        // Rasterizing the filter is async; a newer render drops this one's result.
+        const c = document.createElement("canvas");
+        const px = Math.round(this.preview.clientWidth * (window.devicePixelRatio || 1)) || 400;
+        renderTexturedSquare(c, grad, s, px, pngSource, s.texture).then(() => {
+          if (token === this.outputToken) this.preview.replaceChildren(c);
+        }, console.error);
+      } else previewCanvas(pngSource);
       note = pngSource === "path"
         ? `${s.pngSize} × ${s.pngSize} px. Every pixel is sampled along the path itself, so it is smoother than any stop list.`
         : `${s.pngSize} × ${s.pngSize} px, from the ${n} stops.`;
-      const blob = () => pngBlob(grad, s, s.pngSize, pngSource);
+      const blob = () => pngBlob(grad, s, s.pngSize, pngSource, textured ? s.texture : null);
       this.button("Copy PNG", true, () => navigator.clipboard.write([new ClipboardItem({ "image/png": blob() })]));
       this.button("Download PNG", false, async () => download(await blob(), `gradient-${s.pngSize}.png`));
     } else if (s.tab === "blender") {
@@ -523,10 +582,11 @@ async function copySvg(svg: string) {
   await navigator.clipboard.writeText(svg);
 }
 
-function pngBlob(grad: Gradient, g: Geometry, size: number, source: "path" | "stops"): Promise<Blob> {
+async function pngBlob(grad: Gradient, g: Geometry, size: number, source: "path" | "stops", texture: Texture | null): Promise<Blob> {
+  const c = document.createElement("canvas");
+  if (texture) await renderTexturedSquare(c, grad, g, size, source, texture);
+  else renderSquare(c, grad, g, size, source);
   return new Promise((resolve, reject) => {
-    const c = document.createElement("canvas");
-    renderSquare(c, grad, g, size, source);
     c.toBlob((b) => (b ? resolve(b) : reject(new Error("PNG encoding failed"))), "image/png");
   });
 }

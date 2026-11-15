@@ -481,6 +481,7 @@ select { width: 100%; }
 .ex-seg button { background: var(--surface-1); height: 28px; padding: 0 8px; font-weight: 600; }
 /* Same height as the segmented rows; with no label inside, the value sits right. */
 .ex-slider { height: 28px; justify-content: flex-end; }
+.ex-shuffle { justify-self: start; height: 28px; padding: 0 10px; font-weight: 600; background: var(--surface-1); }
 .ex-check { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; }
 .ex-check input { accent-color: var(--accent); margin: 0; }
 .ex-note { margin: 0; color: var(--text-muted); font-size: 12px; line-height: 1.5; }
