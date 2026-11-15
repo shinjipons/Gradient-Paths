@@ -42,6 +42,7 @@ import { makePlane, type Plane } from "./views/plane";
 import { BezierEditor } from "./views/beziereditor";
 import { ColorPicker } from "./views/colorpicker";
 import { selectAllOnFocus } from "./views/inputs";
+import { showMobileNotice } from "./views/mobilenotice";
 import { whenCanvasFontReady } from "./views/fonts";
 import { SliceView } from "./views/slice2d";
 import { View3D, type TranslateSpace } from "./views/view3d";
@@ -722,3 +723,4 @@ window.addEventListener("hashchange", () => {
   render();
 });
 render();
+showMobileNotice();
