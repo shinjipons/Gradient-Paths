@@ -117,11 +117,22 @@ const MODE_ICONS: Record<PathMode, IconNode> = {
   polyline: VectorPolygon,
   spline: Tangent,
 };
+// One- or two-word hover tips; the full label stays as the accessible name.
+const MODE_TIPS: Record<PathMode, string> = {
+  native: "Native",
+  line: "Straight",
+  cylindrical: "Orbit",
+  arc: "Arc",
+  quadratic: "Quadratic",
+  cubic: "Cubic",
+  polyline: "Waypoints",
+  spline: "Spline",
+};
 const modeBtns = new Map<PathMode, HTMLButtonElement>();
 for (const m of MODES) {
   const b = document.createElement("button");
   b.className = "tool-btn";
-  b.title = `${m.label}: ${m.hint.replace(/`/g, "")}`;
+  b.dataset.tip = MODE_TIPS[m.id];
   b.setAttribute("aria-label", m.label);
   b.append(createElement(MODE_ICONS[m.id], { width: 18, height: 18 }));
   b.onclick = () => { state.mode = m.id; render(); };
@@ -240,21 +251,22 @@ const view3d = new View3D($("view3d"), {
 $("reset-cam").onclick = () => view3d.reset();
 
 // Second left-edge strip, under the path modes: which axes the selection gizmo moves a handle along.
-const SPACE_TOOLS: { v: TranslateSpace; label: string; hint: string; icon: IconNode }[] = [
-  { v: "world", label: "World axes", hint: "Move along the color space's own X, Y and Z axes", icon: Move3d },
-  { v: "camera", label: "Camera axes", hint: "Move across the screen, left–right and up–down", icon: View },
-  { v: "plane", label: "Section plane axes", hint: "Move within the section plane, or along its normal", icon: LayerArrowUp },
+const SPACE_TOOLS: { v: TranslateSpace; label: string; tip: string; hint: string; icon: IconNode }[] = [
+  { v: "world", label: "World axes", tip: "World", hint: "Move along the color space's own X, Y and Z axes", icon: Move3d },
+  { v: "camera", label: "Camera axes", tip: "Camera", hint: "Move across the screen, left–right and up–down", icon: View },
+  { v: "plane", label: "Section plane axes", tip: "Plane", hint: "Move within the section plane, or along its normal", icon: LayerArrowUp },
   {
     v: "slide",
     label: "Slide along edges",
+    tip: "Slide",
     hint: "Control points: slide along either control-polygon edge, or along their bisector. Endpoints use world axes",
     icon: Maximize2,
   },
 ];
-const spaceBtns = SPACE_TOOLS.map(({ v, label, hint, icon }) => {
+const spaceBtns = SPACE_TOOLS.map(({ v, label, tip, icon }) => {
   const b = document.createElement("button");
   b.className = "tool-btn";
-  b.title = `${label}: ${hint}`;
+  b.dataset.tip = tip;
   b.setAttribute("aria-label", label);
   b.append(createElement(icon, { width: 18, height: 18 }));
   b.onclick = () => setTranslateSpace(v);
@@ -266,6 +278,27 @@ function setTranslateSpace(v: TranslateSpace) {
   spaceBtns.forEach((b, i) => b.setAttribute("aria-pressed", String(SPACE_TOOLS[i].v === v)));
 }
 setTranslateSpace("world");
+
+// Tool tips wait 0.25s the first time; once one has shown, the next appears at once, until the
+// pointer has been off every tool button for 0.4s.
+{
+  const strips = document.querySelector<HTMLElement>(".vtools")!;
+  let warmTimer = 0, coolTimer = 0;
+  const tipBtn = (t: EventTarget | null) => (t as Element | null)?.closest?.(".tool-btn[data-tip]");
+  strips.addEventListener("pointerover", (e) => {
+    if (!tipBtn(e.target)) return;
+    clearTimeout(coolTimer);
+    if (!strips.classList.contains("tips-warm")) {
+      warmTimer = window.setTimeout(() => strips.classList.add("tips-warm"), 250);
+    }
+  });
+  strips.addEventListener("pointerout", (e) => {
+    const btn = tipBtn(e.target);
+    if (!btn || btn === tipBtn(e.relatedTarget)) return;
+    clearTimeout(warmTimer);
+    coolTimer = window.setTimeout(() => strips.classList.remove("tips-warm"), 400);
+  });
+}
 
 const slice = new SliceView($("slice"), {
   onDragStart: () => { lockedPlane = currentPlane ?? null; undoHistory.holding = true; },

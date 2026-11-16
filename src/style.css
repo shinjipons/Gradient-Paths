@@ -363,6 +363,22 @@ select { width: 100%; }
   color: var(--text-muted); cursor: pointer;
 }
 .tool-btn:hover { color: var(--text-primary); }
+/* Hover tip just right of the strip: past the button, the strip's 4px padding and 1px border, plus 8px. */
+.tool-btn { position: relative; }
+.tool-btn[data-tip]::after {
+  content: attr(data-tip);
+  position: absolute; left: calc(100% + 13px); top: 50%; z-index: 4;
+  transform: translate(-4px, -50%); opacity: 0; pointer-events: none;
+  padding: 4px 8px; white-space: nowrap; font-size: 12px; line-height: 16px;
+  background: var(--surface-2); color: var(--text-primary);
+  border: 1px solid var(--border); border-radius: 4px;
+  transition: opacity 0.12s, transform 0.12s;
+}
+.tool-btn[data-tip]:hover::after, .tool-btn[data-tip]:focus-visible::after {
+  opacity: 1; transform: translate(0, -50%); transition-delay: 0.25s;
+}
+/* A tip has just shown: the next one appears without the wait. */
+.vtools.tips-warm .tool-btn[data-tip]::after { transition: none; }
 .tool-btn[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 /* The 3D toolbar is centered across the viewport; the axis gizmo owns the top-right corner. */
 .view-head.has-gizmo .toolbar { position: absolute; left: 50%; transform: translateX(-50%); }
